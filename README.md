@@ -23,3 +23,6 @@ BT IntelliStat is a web-based data science tool designed for senior researchers 
 * **Auth:** Google OAuth 2.0 (OpenID Connect)
 * **Visualization:** Matplotlib & Seaborn
 * **Deployment:** Render (with Gunicorn)
+
+🛡️ License & Copyright
+© 2026 BT IntelliStat. All rights reserved. This project is currently in Beta for trial purposes.
