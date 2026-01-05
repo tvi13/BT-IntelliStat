@@ -1,0 +1,713 @@
+<style>
+    .results-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        gap: 2rem;
+        animation: fadeInUp 0.8s ease;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .result-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+        transition: all 0.4s ease;
+        position: relative;
+        max-width: 100%;
+    }
+
+    .result-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: var(--primary-gradient);
+    }
+
+    .result-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 60px 0 rgba(102, 126, 234, 0.3);
+        border-color: rgba(102, 126, 234, 0.5);
+    }
+
+    .result-header {
+        padding: 1.5rem 2rem;
+        background: rgba(102, 126, 234, 0.05);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .result-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: white;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .result-body {
+        padding: 2rem;
+        overflow: hidden;
+    }
+
+    .viz-container {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .viz-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--primary-gradient);
+    }
+
+    .viz-container img {
+        width: 100%;
+        height: auto;
+        border-radius: 12px;
+        transition: transform 0.3s ease;
+        cursor: pointer;
+    }
+
+    .viz-container:hover img {
+        transform: scale(1.02);
+    }
+
+    .no-viz-alert {
+        background: rgba(245, 87, 108, 0.1);
+        border: 1px solid rgba(245, 87, 108, 0.3);
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .no-viz-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.6;
+    }
+
+    .insight-section {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 1.5rem;
+        position: relative;
+        overflow-x: auto;
+        max-width: 100%;
+    }
+
+    .insight-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--primary-gradient);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .insight-content {
+        color: var(--text-primary);
+        line-height: 1.8;
+        font-size: 1rem;
+        max-width: 100%;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+    }
+
+    .insight-content b {
+        color: white;
+        font-weight: 600;
+    }
+
+    .insight-content ul {
+        margin: 1rem 0;
+        padding-left: 1.5rem;
+    }
+
+    .insight-content li {
+        margin: 0.5rem 0;
+        color: var(--text-secondary);
+    }
+
+    .insight-content table {
+        width: 100%;
+        max-width: 100%;
+        border-collapse: collapse;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 1rem 0;
+        display: block;
+        overflow-x: auto;
+    }
+
+    .insight-content thead,
+    .insight-content tbody,
+    .insight-content tr {
+        display: table;
+        width: 100%;
+        table-layout: fixed;
+    }
+
+    .insight-content table th {
+        background: rgba(102, 126, 234, 0.2);
+        color: white;
+        padding: 12px 8px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9rem;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+
+    .insight-content table td {
+        padding: 10px 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+
+    .insight-content table tr:hover {
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .insight-content table::-webkit-scrollbar {
+        height: 8px;
+    }
+
+    .insight-content table::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+    }
+
+    .insight-content table::-webkit-scrollbar-thumb {
+        background: rgba(102, 126, 234, 0.5);
+        border-radius: 4px;
+    }
+
+    .insight-content table::-webkit-scrollbar-thumb:hover {
+        background: rgba(102, 126, 234, 0.7);
+    }
+
+    /* NEW: Table actions */
+    .table-actions {
+        margin-top: 1rem;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .btn-export-table {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 10px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+    }
+
+    .btn-export-table:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(79, 172, 254, 0.5);
+    }
+
+    /* NEW: Graph modal */
+    .graph-modal {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(10px);
+        animation: fadeIn 0.3s ease;
+    }
+
+    .graph-modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .graph-modal-content {
+        position: relative;
+        max-width: 90%;
+        max-height: 90%;
+        background: var(--glass-bg);
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 2rem;
+        animation: zoomIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes zoomIn {
+        from {
+            opacity: 0;
+            transform: scale(0.8);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .modal-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: white;
+    }
+
+    .modal-close {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .modal-close:hover {
+        background: rgba(245, 87, 108, 0.3);
+        transform: rotate(90deg);
+    }
+
+    .modal-graph {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .modal-graph img {
+        max-width: 100%;
+        max-height: 70vh;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+    }
+
+    .btn-download-image {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-download-image:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+
+    .comparison-banner {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        animation: slideIn 0.8s ease;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    .comparison-icon {
+        font-size: 2.5rem;
+        opacity: 0.9;
+        flex-shrink: 0;
+    }
+
+    .comparison-content h6 {
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .comparison-content p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 0.95rem;
+    }
+
+    @media (max-width: 768px) {
+        .results-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .insight-content table {
+            font-size: 0.8rem;
+        }
+        
+        .insight-content table th,
+        .insight-content table td {
+            padding: 8px 4px;
+            font-size: 0.75rem;
+        }
+
+        .graph-modal-content {
+            padding: 1rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .result-body {
+            padding: 1rem;
+        }
+        
+        .insight-content table th,
+        .insight-content table td {
+            padding: 6px 3px;
+            font-size: 0.7rem;
+        }
+    }
+
+    .btn-copy {
+    background: var(--success-gradient);
+    color: white;
+    box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+}
+
+.btn-copy:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(79, 172, 254, 0.5);
+    color: white;
+}
+
+.btn-success {
+    background: #28a745 !important;
+}
+</style>
+
+<div class="results-grid">
+    {% for res in results %}
+    <div class="result-card" data-result-index="{{ loop.index0 }}">
+        <div class="result-header">
+            <h3 class="result-title">
+                <i class="bi bi-graph-up"></i>
+                {{ res.name }} Analysis
+            </h3>
+        </div>
+        
+        <div class="result-body">
+            {% if res.plot %}
+                <div class="viz-container">
+                    <img src="data:image/png;base64,{{ res.plot }}" 
+                         alt="Statistical Visualization"
+                         loading="lazy"
+                         class="graph-image"
+                         onclick="openGraphModal(this, '{{ res.name }}')"
+                         data-graph-name="{{ res.name }}">
+                </div>
+                <div class="action-buttons">
+                    <button class="btn-action btn-copy" onclick="copyAnalysisToClipboard">
+                        <i class="bi bi-copy"></i> Copy Analysis
+                    </button>
+                </div>
+            {% else %}
+                <div class="no-viz-alert">
+                    <div class="no-viz-icon">⚠️</div>
+                    <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;">
+                        Visualization Unavailable
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.9rem;">
+                        The selected variables did not contain enough numerical variance for visualization.
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="insight-section">
+                <div class="insight-badge">
+                    <i class="bi bi-cpu"></i>
+                    BT INTELLISTAT INSIGHTS
+                </div>
+                
+                <div class="insight-content">
+                    {{ res.insight | safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if mode == 'comparative' %}
+<div class="comparison-banner">
+    <div class="comparison-icon">⚖️</div>
+    <div class="comparison-content">
+        <h6>Comparative Methodology Benchmark</h6>
+        <p>
+            The AI has performed cross-validation of both methodologies. 
+            Review the interpretations above to identify which model provides 
+            the most robust statistical evidence for your dataset.
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Graph Modal -->
+<div id="graphModal" class="graph-modal" onclick="closeGraphModal(event)">
+    <div class="graph-modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modalTitle">Graph Visualization</h3>
+            <button class="modal-close" onclick="closeGraphModal()">&times;</button>
+        </div>
+        <div class="modal-graph">
+            <img id="modalGraphImage" src="" alt="Graph">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-download-image" onclick="downloadImage('png')">
+                <i class="bi bi-download"></i>
+                Download as PNG
+            </button>
+            <button class="btn-download-image" onclick="downloadImage('jpeg')">
+                <i class="bi bi-download"></i>
+                Download as JPEG
+            </button>
+        </div>
+    </div>
+</div>
+<div class="text-center mt-4 pt-3" style="border-top: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); font-size: 0.85rem;">
+    © 2026 BT IntelliStat
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script>
+// Add export buttons to tables
+document.addEventListener('DOMContentLoaded', function() {
+    const tables = document.querySelectorAll('.insight-content table');
+    tables.forEach((table, index) => {
+        if (!table.nextElementSibling || !table.nextElementSibling.classList.contains('table-actions')) {
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'table-actions';
+            actionsDiv.innerHTML = 
+                <button class="btn-export-table" onclick="exportTableToSheets(${index})">
+                    <i class="bi bi-table"></i>
+                    Export to Sheets
+                </button>
+            ;
+            table.parentNode.insertBefore(actionsDiv, table.nextSibling);
+        }
+    });
+});
+
+// Export table to Google Sheets
+function exportTableToSheets(tableIndex) {
+    const tables = document.querySelectorAll('.insight-content table');
+    const table = tables[tableIndex];
+    
+    if (!table) return;
+    
+    // Convert table to CSV
+    let csv = [];
+    const rows = table.querySelectorAll('tr');
+    
+    rows.forEach(row => {
+        const cols = row.querySelectorAll('td, th');
+        const csvRow = [];
+        cols.forEach(col => {
+            csvRow.push('"' + col.innerText.replace(/"/g, '""') + '"');
+        });
+        csv.push(csvRow.join(','));
+    });
+    
+    const csvContent = csv.join('\n');
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `table_export_${Date.now()}.csv`;
+    link.click();
+    
+    alert('Table exported as CSV! You can now upload this to Google Sheets.');
+}
+
+// Open graph modal
+let currentGraphSrc = '';
+let currentGraphName = '';
+
+function openGraphModal(imgElement, graphName) {
+    const modal = document.getElementById('graphModal');
+    const modalImage = document.getElementById('modalGraphImage');
+    const modalTitle = document.getElementById('modalTitle');
+    
+    currentGraphSrc = imgElement.src;
+    currentGraphName = graphName;
+    
+    modalImage.src = currentGraphSrc;
+    modalTitle.textContent = graphName + ' - Visualization';
+    modal.classList.add('active');
+    
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+}
+
+function closeGraphModal(event) {
+    if (!event || event.target.id === 'graphModal' || event.type === 'click') {
+        const modal = document.getElementById('graphModal');
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+// Download graph as image
+function downloadImage(format) {
+    const link = document.createElement('a');
+    link.href = currentGraphSrc;
+    link.download = `${currentGraphName}_graph_${Date.now()}.${format}`;
+    
+    if (format === 'jpeg') {
+        // Convert PNG to JPEG
+        const img = new Image();
+        img.src = currentGraphSrc;
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+        };
+    } else {
+        link.click();
+    }
+}
+
+function copyAnalysisToClipboard(index) {
+    // Select the specific insight content
+    const resultCard = document.querySelectorAll('.result-card')[index];
+    const insightContent = resultCard.querySelector('.insight-content');
+    
+    // Create a temporary container to manipulate the styles for Word
+    const tempContainer = document.createElement('div');
+    tempContainer.innerHTML = insightContent.innerHTML;
+
+    const allElements = tempContainer.querySelectorAll('*');
+    allElements.forEach(el => {
+        el.style.color = 'black';
+        el.style.backgroundColor = 'white';
+        el.style.fontFamily = 'Arial, sans-serif';
+        
+        // Ensure tables have borders that Word can see
+        if (el.tagName === 'TABLE') {
+            el.setAttribute('border', '1');
+            el.style.borderCollapse = 'collapse';
+            el.style.width = '100%';
+        }
+    });
+
+    // Use the Clipboard API to copy as HTML
+    const blob = new Blob([tempContainer.innerHTML], { type: 'text/html' });
+    const data = [new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([insightContent.innerText], { type: 'text/plain' }) })];
+
+    navigator.clipboard.write(data).then(() => {
+    const btn = resultCard.querySelector('.btn-copy');
+    const originalHTML = btn.innerHTML;
+    
+    // Change to checkmark on success
+    btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
+    btn.classList.add('btn-success');
+    
+    setTimeout(() => {
+        // Revert to the original bi-copy icon
+        btn.innerHTML = originalHTML;
+        btn.classList.remove('btn-success');
+    }, 2000);
+});
+}
+
+// Close modal on ESC key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeGraphModal();
+    }
+});
+</script>

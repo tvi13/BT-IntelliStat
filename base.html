@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BT IntelliStat | One Tool. Infinite Insights.</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css">
+    
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --dark-bg: #0f0f23;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --glass-bg: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --accent-purple: #667eea;
+            --accent-pink: #f5576c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0f0f23;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(102, 126, 234, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(245, 87, 108, 0.1) 0px, transparent 50%);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background Particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: var(--accent-purple);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: float 20s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) translateX(0); }
+            25% { transform: translateY(-100px) translateX(50px); }
+            50% { transform: translateY(-200px) translateX(-50px); }
+            75% { transform: translateY(-100px) translateX(100px); }
+        }
+
+        /* Modern Navbar */
+        .navbar {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.2rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+        }
+
+        .navbar-brand {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1.5rem;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-logo {
+            max-height: 35px;
+            max-width: 35px;
+            height: auto;
+            width: auto;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0.3));
+            transition: transform 0.3s ease;
+        }
+
+        .navbar-brand:hover .brand-logo {
+            transform: scale(1.05);
+        }
+
+        /* Drawer Button */
+        .drawer-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 1rem;
+        }
+
+        .drawer-btn:hover {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: var(--accent-purple);
+            transform: scale(1.05);
+        }
+
+        .drawer-btn i {
+            font-size: 1.3rem;
+            color: white;
+        }
+
+        /* History Drawer */
+        .history-drawer {
+            position: fixed;
+            top: 0;
+            left: -400px;
+            width: 400px;
+            height: 100vh;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 8px 0 32px rgba(0, 0, 0, 0.3);
+            transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1100;
+            overflow-y: auto;
+        }
+
+        .history-drawer.open {
+            left: 0;
+        }
+
+        .drawer-header {
+            padding: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .drawer-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .drawer-close {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .drawer-close:hover {
+            background: rgba(245, 87, 108, 0.3);
+            transform: rotate(90deg);
+        }
+
+        .drawer-content {
+            padding: 1.5rem;
+        }
+
+        .history-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .history-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: var(--accent-purple);
+            transform: translateX(5px);
+        }
+
+        .history-item-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: white;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .history-item-date {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .history-item-method {
+            display: inline-block;
+            background: var(--primary-gradient);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .empty-history {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-history i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* Drawer Overlay */
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1050;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .drawer-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* User Dropdown */
+        .user-dropdown {
+            position: relative;
+        }
+
+        .user-badge {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .user-badge:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: scale(1.05);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .dropdown-menu-custom {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 0.5rem;
+            min-width: 200px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+
+        .dropdown-menu-custom.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item-custom {
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .dropdown-item-custom:hover {
+            background: rgba(245, 87, 108, 0.2);
+            color: white;
+        }
+
+        .dropdown-item-custom i {
+            font-size: 1.1rem;
+        }
+
+        /* Glass Card Effect */
+        .card-glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-glass::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .card-glass:hover::before {
+            left: 100%;
+        }
+
+        .card-glass:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 60px 0 rgba(102, 126, 234, 0.3);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        /* Modern Buttons */
+        .btn-gradient {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            padding: 14px 32px;
+            font-weight: 600;
+            border-radius: 16px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px 0 rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-gradient::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn-gradient:hover::before {
+            left: 100%;
+        }
+
+        .btn-gradient:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px 0 rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-outline-glass {
+            background: transparent;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 24px;
+            font-weight: 500;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-outline-glass:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-purple);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        /* Alert Styles */
+        .alert {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            border-left: 4px solid var(--accent-purple);
+            color: white;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Footer */
+        footer {
+            margin-top: auto;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2rem 0;
+            position: relative;
+        }
+
+        footer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--primary-gradient);
+            opacity: 0.5;
+        }
+
+        /* Content Container */
+        .content-wrapper {
+            position: relative;
+            z-index: 1;
+            padding: 2rem 0;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--dark-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-purple);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-pink);
+        }
+
+        /* Glow Effects */
+        .glow-text {
+            text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .history-drawer {
+                width: 100%;
+                left: -100%;
+            }
+            
+            .navbar-brand {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Animated Background Particles -->
+    <div class="particles">
+        <div class="particle" style="left: 10%; animation-delay: 0s; animation-duration: 15s;"></div>
+        <div class="particle" style="left: 20%; animation-delay: 2s; animation-duration: 18s;"></div>
+        <div class="particle" style="left: 30%; animation-delay: 4s; animation-duration: 20s;"></div>
+        <div class="particle" style="left: 40%; animation-delay: 1s; animation-duration: 16s;"></div>
+        <div class="particle" style="left: 50%; animation-delay: 3s; animation-duration: 19s;"></div>
+        <div class="particle" style="left: 60%; animation-delay: 5s; animation-duration: 17s;"></div>
+        <div class="particle" style="left: 70%; animation-delay: 2s; animation-duration: 21s;"></div>
+        <div class="particle" style="left: 80%; animation-delay: 4s; animation-duration: 22s;"></div>
+        <div class="particle" style="left: 90%; animation-delay: 1s; animation-duration: 18s;"></div>
+    </div>
+
+    <!-- Drawer Overlay -->
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+
+    <!-- History Drawer -->
+    <div class="history-drawer" id="historyDrawer">
+        <div class="drawer-header">
+            <h3 class="drawer-title">
+                <i class="bi bi-clock-history"></i> Analysis History
+            </h3>
+            <button class="drawer-close" onclick="closeDrawer()">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="drawer-content" id="historyContent">
+            <div class="empty-history">
+                <i class="bi bi-inbox"></i>
+                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">No History Yet</div>
+                <div style="font-size: 0.9rem;">Your analysis history will appear here</div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="navbar">
+        <div class="container">
+            <div class="d-flex align-items-center">
+                {% if session.user_name %}
+                <div class="drawer-btn" onclick="toggleDrawer()">
+                    <i class="bi bi-list"></i>
+                </div>
+                {% endif %}
+                <a class="navbar-brand" href="#">
+                    <img src="{{ url_for('static', filename='logoBT.png') }}" alt="BT IntelliStat Logo" class="brand-logo">
+                    BT IntelliStat | One Tool. Infinite Insights.
+                </a>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                {% if session.user_name %}
+                    <div class="user-dropdown">
+                        <div class="user-badge" onclick="toggleUserDropdown()">
+                            <div class="user-avatar">{{ session.user_name[0].upper() }}</div>
+                            <span class="small">{{ session.user_name }}</span>
+                            <i class="bi bi-chevron-down" style="font-size: 0.8rem;"></i>
+                        </div>
+                        <div class="dropdown-menu-custom" id="userDropdown">
+                            <a href="{{ url_for('logout') }}" class="dropdown-item-custom">
+                                <i class="bi bi-box-arrow-right"></i>
+                                <span>Logout</span>
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container content-wrapper">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} mb-4">
+                        <i class="bi bi-info-circle me-2"></i>{{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="text-center">
+        <div class="container">
+            <p class="mb-2 glow-text" style="font-weight: 600;">© 2026 BT IntelliStat</p>
+            <p class="mb-0 small" style="color: var(--text-secondary);">
+                <i class="bi bi-shield-check me-1"></i> Encrypted Processing via Google Cloud
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Toggle History Drawer
+        function toggleDrawer() {
+            const drawer = document.getElementById('historyDrawer');
+            const overlay = document.getElementById('drawerOverlay');
+            drawer.classList.toggle('open');
+            overlay.classList.toggle('active');
+            
+            // Load history when opening
+            if (drawer.classList.contains('open')) {
+                loadHistory();
+            }
+        }
+
+        function closeDrawer() {
+            document.getElementById('historyDrawer').classList.remove('open');
+            document.getElementById('drawerOverlay').classList.remove('active');
+        }
+
+        // Toggle User Dropdown
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const userDropdown = document.querySelector('.user-dropdown');
+            const dropdown = document.getElementById('userDropdown');
+            
+            if (userDropdown && !userDropdown.contains(event.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+
+        // Load Analysis History
+        async function loadHistory() {
+            const historyContent = document.getElementById('historyContent');
+            historyContent.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p>Fetching from Cloud...</p></div>';
+            
+            try {
+                const response = await fetch('/get_cloud_history');
+                const files = await response.json();
+                
+                if (files.length === 0) {
+                    historyContent.innerHTML = '<div class="empty-history">No Cloud History Found</div>';
+                    return;
+                }
+                
+                historyContent.innerHTML = files.map(file => `
+                <div class="history-item" onclick="loadCloudAnalysis('${file.id}')">
+                <div class="history-item-title">${file.name.replace('.json', '')}</div>
+                <div class="history-item-date">${new Date(file.createdTime).toLocaleString()}</div>
+            </div>
+        `).join('');
+    } catch (e) {
+        historyContent.innerHTML = '<div class="p-3 text-danger">Error loading cloud history.</div>';
+    }
+}
+
+        // Save analysis to history
+        function saveToHistory(filename, method) {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            history.push({
+                filename: filename,
+                method: method,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only last 50 analyses
+            if (history.length > 50) {
+                history.shift();
+            }
+            
+            localStorage.setItem('analysisHistory', JSON.stringify(history));
+        }
+
+        // Load specific analysis (implement based on your needs)
+        async function loadCloudAnalysis(fileId) {
+    const response = await fetch(`/get_analysis_detail/${fileId}`);
+    const data = await response.json();
+    document.getElementById('resultsArea').innerHTML = data.html;
+    closeDrawer();
+}
+
+        // Close dropdown on ESC key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                document.getElementById('userDropdown').classList.remove('show');
+                closeDrawer();
+            }
+        });
+    </script>
+</body>
+</html>

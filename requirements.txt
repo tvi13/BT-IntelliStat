@@ -1,0 +1,15 @@
+flask
+pandas
+numpy
+matplotlib
+seaborn
+scipy
+scikit-learn
+authlib
+requests
+groq
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+openpyxl
+python-docx
