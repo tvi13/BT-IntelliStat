@@ -20,7 +20,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 import re
-from fpdf import FPDF
 from datetime import datetime
 from googleapiclient.http import MediaIoBaseUpload
 
