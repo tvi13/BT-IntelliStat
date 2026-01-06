@@ -49,7 +49,7 @@ google = oauth.register(
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file'
+    client_kwargs={'scope': 'openid email profile https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly'
 },
 )
 
@@ -542,15 +542,17 @@ def get_cloud_history():
         creds = Credentials(token=session['google_token']['access_token'])
         service = build('drive', 'v3', credentials=creds)
         
-        # We MUST specify spaces='appDataFolder' to see these files
+        # Specify 'appDataFolder' in the spaces parameter
         results = service.files().list(
-            spaces='appDataFolder',
+            spaces='appDataFolder', 
+            q="trashed = false",
             fields="files(id, name, createdTime)",
             pageSize=15
         ).execute()
         
         return jsonify(results.get('files', []))
     except Exception as e:
+        print(f"History Fetch Error: {e}") # This will show the error in your terminal
         return jsonify({"error": str(e)}), 500
 
 @app.route("/get_analysis_detail/<file_id>")
