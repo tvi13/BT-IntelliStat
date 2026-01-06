@@ -53,6 +53,25 @@ google = oauth.register(
 },
 )
 
+def get_valid_credentials():
+    """Get valid credentials, refreshing if necessary"""
+    if 'google_token' not in session:
+        return None
+    
+    try:
+        token_data = session['google_token']
+        creds = Credentials(
+            token=token_data['access_token'],
+            refresh_token=token_data.get('refresh_token'),
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET
+        )
+        return creds
+    except Exception as e:
+        print(f"Credentials error: {e}")
+        return None
+
 # --- RESEARCH ENGINE ---
 
 def format_tables_in_html(html_content):
@@ -392,9 +411,15 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None):
         return None, f"Error: {str(e)}", final_name, False
 
 def save_analysis_to_drive(filename, method, html_content):
-    if 'google_token' not in session: return
+    if 'google_token' not in session: 
+        print("No token in session")
+        return
     try:
-        creds = Credentials(token=session['google_token']['access_token'])
+        creds = get_valid_credentials()
+        if not creds:
+            print("Could not get valid credentials")
+            return
+            
         service = build('drive', 'v3', credentials=creds)
 
         analysis_data = {
@@ -405,8 +430,8 @@ def save_analysis_to_drive(filename, method, html_content):
         }
         
         file_metadata = {
-            'name': f"BT_{filename}_{method}.json",
-            'parents': ['appDataFolder'] # Save in hidden folder
+            'name': f"BT_{filename}_{method}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            'parents': ['appDataFolder']
         }
         
         media = MediaIoBaseUpload(
@@ -414,9 +439,13 @@ def save_analysis_to_drive(filename, method, html_content):
             mimetype='application/json'
         )
         
-        service.files().create(body=file_metadata, media_body=media).execute()
+        result = service.files().create(body=file_metadata, media_body=media).execute()
+        print(f"Saved analysis to Drive: {result.get('id')}")
+        
     except Exception as e:
-        print(f"Drive Error: {e}")
+        print(f"Drive Save Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # --- ROUTES ---
 
@@ -531,10 +560,12 @@ def get_cloud_history():
         return jsonify({"error": "Not authenticated"}), 401
     
     try:
-        creds = Credentials(token=session['google_token']['access_token'])
+        creds = get_valid_credentials()
+        if not creds:
+            return jsonify({"error": "Invalid credentials"}), 401
+            
         service = build('drive', 'v3', credentials=creds)
         
-        # We MUST specify spaces='appDataFolder' to see these files
         results = service.files().list(
             spaces='appDataFolder',
             fields="files(id, name, createdTime)",
@@ -543,9 +574,13 @@ def get_cloud_history():
         ).execute()
         
         files = results.get('files', [])
+        print(f"Found {len(files)} files in history")  # Debug log
         return jsonify(files)
+        
     except Exception as e:
         print(f"Drive history error: {str(e)}")
+        import traceback
+        traceback.print_exc()  # Print full stack trace for debugging
         return jsonify({"error": f"Failed to load history: {str(e)}"}), 500
 
 @app.route("/get_analysis_detail/<file_id>")
