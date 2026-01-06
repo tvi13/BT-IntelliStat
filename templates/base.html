@@ -647,26 +647,49 @@
 
         // Load Analysis History
         async function loadHistory() {
-            const historyContent = document.getElementById('historyContent');
-            historyContent.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p>Fetching from Cloud...</p></div>';
-            
-            try {
-                const response = await fetch('/get_cloud_history');
-                const files = await response.json();
-                
-                if (files.length === 0) {
-                    historyContent.innerHTML = '<div class="empty-history">No Cloud History Found</div>';
-                    return;
-                }
-                
-                historyContent.innerHTML = files.map(file => `
-                <div class="history-item" onclick="loadCloudAnalysis('${file.id}')">
-                <div class="history-item-title">${file.name.replace('.json', '')}</div>
+    const historyContent = document.getElementById('historyContent');
+    historyContent.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p>Fetching from Cloud...</p></div>';
+    
+    try {
+        const response = await fetch('/get_cloud_history');
+        
+        if (!response.ok) {
+            const error = await response.json();
+            historyContent.innerHTML = `<div class="empty-history">
+                <i class="bi bi-exclamation-triangle"></i>
+                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">Error Loading History</div>
+                <div style="font-size: 0.9rem;">${error.error || 'Unable to fetch cloud history'}</div>
+            </div>`;
+            return;
+        }
+        
+        const files = await response.json();
+        
+        if (files.length === 0) {
+            historyContent.innerHTML = `<div class="empty-history">
+                <i class="bi bi-inbox"></i>
+                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">No History Yet</div>
+                <div style="font-size: 0.9rem;">Your analysis history will appear here</div>
+            </div>`;
+            return;
+        }
+        
+        historyContent.innerHTML = files.map(file => `
+            <div class="history-item" onclick="loadCloudAnalysis('${file.id}')">
+                <div class="history-item-title">
+                    <i class="bi bi-file-earmark-bar-graph"></i>
+                    ${file.name.replace('BT_', '').replace('.json', '')}
+                </div>
                 <div class="history-item-date">${new Date(file.createdTime).toLocaleString()}</div>
             </div>
         `).join('');
     } catch (e) {
-        historyContent.innerHTML = '<div class="p-3 text-danger">Error loading cloud history.</div>';
+        console.error('History loading error:', e);
+        historyContent.innerHTML = `<div class="empty-history">
+            <i class="bi bi-wifi-off"></i>
+            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">Connection Error</div>
+            <div style="font-size: 0.9rem;">Unable to reach cloud storage</div>
+        </div>`;
     }
 }
 
