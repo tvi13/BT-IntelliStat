@@ -519,7 +519,9 @@ def dashboard():
 
 @app.route("/get_cloud_history")
 def get_cloud_history():
-    if 'google_token' not in session: return jsonify([])
+    if 'google_token' not in session: 
+        return jsonify({"error": "Not authenticated"}), 401
+    
     try:
         creds = Credentials(token=session['google_token']['access_token'])
         service = build('drive', 'v3', credentials=creds)
@@ -528,12 +530,15 @@ def get_cloud_history():
         results = service.files().list(
             spaces='appDataFolder',
             fields="files(id, name, createdTime)",
-            pageSize=15
+            pageSize=15,
+            orderBy='createdTime desc'
         ).execute()
         
-        return jsonify(results.get('files', []))
+        files = results.get('files', [])
+        return jsonify(files)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Drive history error: {str(e)}")
+        return jsonify({"error": f"Failed to load history: {str(e)}"}), 500
 
 @app.route("/get_analysis_detail/<file_id>")
 def get_analysis_detail(file_id):
