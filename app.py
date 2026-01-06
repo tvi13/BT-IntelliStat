@@ -485,7 +485,15 @@ def dashboard():
         # 2. Perform Analysis
         if session.get('last_file'):
             try:
-                df = pd.read_csv(session['last_file'], encoding='latin1')
+                file_path = session['last_file']
+                file_ext = os.path.splitext(file_path)[1].lower()
+                
+                if file_ext == '.csv':
+                    df = pd.read_csv(file_path, encoding='latin1')
+                elif file_ext in ['.xlsx', '.xls']:
+                    df = pd.read_excel(file_path)
+                else:
+                    raise ValueError(f"Unsupported file format: {file_ext}")
                 
                 # First analysis
                 p1, s1, n1, t1 = run_analysis(df, m1, custom_txt, custom_graph)
