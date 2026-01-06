@@ -444,16 +444,34 @@
         }
     }
 
-    .btn-copy {
-    background: var(--success-gradient);
+    .btn-copy-insight {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     color: white;
-    box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
-.btn-copy:hover {
+.btn-copy-insight:hover {
+    background: rgba(102, 126, 234, 0.2);
+    border-color: var(--accent-purple);
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(79, 172, 254, 0.5);
-    color: white;
+}
+
+.btn-copy-insight.copied {
+    background: rgba(40, 167, 69, 0.2);
+    border-color: #28a745;
+}
+
+.btn-copy-insight i {
+    font-size: 1rem;
 }
 
 .btn-success {
@@ -481,11 +499,6 @@
                          onclick="openGraphModal(this, '{{ res.name }}')"
                          data-graph-name="{{ res.name }}">
                 </div>
-                <div class="action-buttons" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
-                    <button class="btn-action btn-copy" onclick="copyAnalysisToClipboard({{ loop.index0 }})">
-                        <i class="bi bi-copy"></i> Copy Analysis
-                    </button>
-                </div>
             {% else %}
                 <div class="no-viz-alert">
                     <div class="no-viz-icon">⚠️</div>
@@ -506,6 +519,11 @@
                 
                 <div class="insight-content">
                     {{ res.insight | safe }}
+                </div>
+                <div style="margin-top: 1.5rem; text-align: right;">
+                    <button class="btn-copy-insight" onclick="copyAnalysisToClipboard({{ loop.index0 }})" title="Copy Analysis">
+                        <i class="bi bi-copy"></i>
+                    </button>
                 </div>
             </div>
         </div>
@@ -662,46 +680,111 @@ function downloadImage(format) {
 }
 
 function copyAnalysisToClipboard(index) {
-    // Select the specific insight content
     const resultCard = document.querySelectorAll('.result-card')[index];
     const insightContent = resultCard.querySelector('.insight-content');
+    const copyBtn = resultCard.querySelector('.btn-copy-insight');
     
-    // Create a temporary container to manipulate the styles for Word
+    if (!insightContent) {
+        alert('No content to copy');
+        return;
+    }
+    
+    // Create a temporary container
     const tempContainer = document.createElement('div');
     tempContainer.innerHTML = insightContent.innerHTML;
 
+    // Style elements for Word/document compatibility
+    tempContainer.style.fontFamily = 'Arial, sans-serif';
+    tempContainer.style.fontSize = '12pt';
+    tempContainer.style.color = 'black';
+    tempContainer.style.backgroundColor = 'white';
+    
     const allElements = tempContainer.querySelectorAll('*');
     allElements.forEach(el => {
         el.style.color = 'black';
         el.style.backgroundColor = 'white';
         el.style.fontFamily = 'Arial, sans-serif';
         
-        // Ensure tables have borders that Word can see
         if (el.tagName === 'TABLE') {
             el.setAttribute('border', '1');
+            el.setAttribute('cellpadding', '8');
+            el.setAttribute('cellspacing', '0');
             el.style.borderCollapse = 'collapse';
             el.style.width = '100%';
+            el.style.border = '1px solid black';
+        }
+        if (el.tagName === 'TH') {
+            el.style.border = '1px solid black';
+            el.style.padding = '8px';
+            el.style.backgroundColor = '#f0f0f0';
+            el.style.fontWeight = 'bold';
+            el.style.textAlign = 'left';
+        }
+        if (el.tagName === 'TD') {
+            el.style.border = '1px solid black';
+            el.style.padding = '8px';
+        }
+        if (el.tagName === 'B' || el.tagName === 'STRONG') {
+            el.style.fontWeight = 'bold';
+        }
+        if (el.tagName === 'H3' || el.tagName === 'H4') {
+            el.style.fontWeight = 'bold';
+            el.style.marginTop = '16px';
+            el.style.marginBottom = '8px';
+        }
+        if (el.tagName === 'P') {
+            el.style.marginBottom = '12px';
+        }
+        if (el.tagName === 'UL' || el.tagName === 'OL') {
+            el.style.marginLeft = '20px';
+            el.style.marginBottom = '12px';
         }
     });
 
-    // Use the Clipboard API to copy as HTML
-    const blob = new Blob([tempContainer.innerHTML], { type: 'text/html' });
-    const data = [new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([insightContent.innerText], { type: 'text/plain' }) })];
+    // Use Clipboard API with both HTML and plain text
+    const htmlBlob = new Blob([tempContainer.outerHTML], { type: 'text/html' });
+    const textBlob = new Blob([insightContent.innerText], { type: 'text/plain' });
+    
+    const clipboardItem = new ClipboardItem({ 
+        'text/html': htmlBlob,
+        'text/plain': textBlob
+    });
 
-    navigator.clipboard.write(data).then(() => {
-    const btn = resultCard.querySelector('.btn-copy');
-    const originalHTML = btn.innerHTML;
-    
-    // Change to checkmark on success
-    btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
-    btn.classList.add('btn-success');
-    
-    setTimeout(() => {
-        // Revert to the original bi-copy icon
-        btn.innerHTML = originalHTML;
-        btn.classList.remove('btn-success');
-    }, 2000);
-});
+    navigator.clipboard.write([clipboardItem]).then(() => {
+        // Success feedback
+        const originalIcon = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+        copyBtn.classList.add('copied');
+        
+        setTimeout(() => {
+            copyBtn.innerHTML = originalIcon;
+            copyBtn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Copy failed:', err);
+        
+        // Fallback: try basic text copy
+        const textArea = document.createElement('textarea');
+        textArea.value = insightContent.innerText;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            copyBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+                copyBtn.innerHTML = '<i class="bi bi-copy"></i>';
+                copyBtn.classList.remove('copied');
+            }, 2000);
+        } catch (e) {
+            alert('Copy failed. Please select and copy manually (Ctrl/Cmd+C)');
+        }
+        
+        document.body.removeChild(textArea);
+    });
 }
 
 // Close modal on ESC key
