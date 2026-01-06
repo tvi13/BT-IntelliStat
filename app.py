@@ -411,15 +411,9 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None):
         return None, f"Error: {str(e)}", final_name, False
 
 def save_analysis_to_drive(filename, method, html_content):
-    if 'google_token' not in session: 
-        print("No token in session")
-        return
+    if 'google_token' not in session: return
     try:
-        creds = get_valid_credentials()
-        if not creds:
-            print("Could not get valid credentials")
-            return
-            
+        creds = Credentials(token=session['google_token']['access_token'])
         service = build('drive', 'v3', credentials=creds)
 
         analysis_data = {
@@ -430,8 +424,8 @@ def save_analysis_to_drive(filename, method, html_content):
         }
         
         file_metadata = {
-            'name': f"BT_{filename}_{method}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            'parents': ['appDataFolder']
+            'name': f"BT_{filename}_{method}.json",
+            'parents': ['appDataFolder'] # Save in hidden folder
         }
         
         media = MediaIoBaseUpload(
@@ -439,13 +433,9 @@ def save_analysis_to_drive(filename, method, html_content):
             mimetype='application/json'
         )
         
-        result = service.files().create(body=file_metadata, media_body=media).execute()
-        print(f"Saved analysis to Drive: {result.get('id')}")
-        
+        service.files().create(body=file_metadata, media_body=media).execute()
     except Exception as e:
-        print(f"Drive Save Error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Drive Error: {e}")
 
 # --- ROUTES ---
 
@@ -514,15 +504,7 @@ def dashboard():
         # 2. Perform Analysis
         if session.get('last_file'):
             try:
-                file_path = session['last_file']
-                file_ext = os.path.splitext(file_path)[1].lower()
-                
-                if file_ext == '.csv':
-                    df = pd.read_csv(file_path, encoding='latin1')
-                elif file_ext in ['.xlsx', '.xls']:
-                    df = pd.read_excel(file_path)
-                else:
-                    raise ValueError(f"Unsupported file format: {file_ext}")
+                df = pd.read_csv(session['last_file'], encoding='latin1')
                 
                 # First analysis
                 p1, s1, n1, t1 = run_analysis(df, m1, custom_txt, custom_graph)
@@ -552,36 +534,24 @@ def dashboard():
                 })
 
     return render_template("dashboard.html", user=session.get('user_name'))
-    return render_template("dashboard.html",user=session.get('user_name'),current_year=datetime.now().year)
 
 @app.route("/get_cloud_history")
 def get_cloud_history():
-    if 'google_token' not in session: 
-        return jsonify({"error": "Not authenticated"}), 401
-    
+    if 'google_token' not in session: return jsonify([])
     try:
-        creds = get_valid_credentials()
-        if not creds:
-            return jsonify({"error": "Invalid credentials"}), 401
-            
+        creds = Credentials(token=session['google_token']['access_token'])
         service = build('drive', 'v3', credentials=creds)
         
+        # We MUST specify spaces='appDataFolder' to see these files
         results = service.files().list(
             spaces='appDataFolder',
             fields="files(id, name, createdTime)",
-            pageSize=15,
-            orderBy='createdTime desc'
+            pageSize=15
         ).execute()
         
-        files = results.get('files', [])
-        print(f"Found {len(files)} files in history")  # Debug log
-        return jsonify(files)
-        
+        return jsonify(results.get('files', []))
     except Exception as e:
-        print(f"Drive history error: {str(e)}")
-        import traceback
-        traceback.print_exc()  # Print full stack trace for debugging
-        return jsonify({"error": f"Failed to load history: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/get_analysis_detail/<file_id>")
 def get_analysis_detail(file_id):
