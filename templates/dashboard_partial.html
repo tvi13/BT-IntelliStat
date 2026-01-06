@@ -481,8 +481,8 @@
                          onclick="openGraphModal(this, '{{ res.name }}')"
                          data-graph-name="{{ res.name }}">
                 </div>
-                <div class="action-buttons">
-                    <button class="btn-action btn-copy" onclick="copyAnalysisToClipboard">
+                <div class="action-buttons" style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+                    <button class="btn-action btn-copy" onclick="copyAnalysisToClipboard({{ loop.index0 }})">
                         <i class="bi bi-copy"></i> Copy Analysis
                     </button>
                 </div>
