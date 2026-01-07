@@ -524,6 +524,7 @@
         </div>
     </div>
     {% endfor %}
+
 </div>
 
 {% if mode == 'comparative' %}
@@ -561,9 +562,6 @@
             </button>
         </div>
     </div>
-</div>
-<div class="text-center mt-4 pt-3" style="border-top: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); font-size: 0.85rem;">
-    © 2026 BT IntelliStat
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -674,112 +672,55 @@ function downloadImage(format) {
     }
 }
 
-function copyAnalysisToClipboard(index) {
-    const resultCard = document.querySelectorAll('.result-card')[index];
-    const insightContent = resultCard.querySelector('.insight-content');
-    const copyBtn = resultCard.querySelector('.btn-copy-insight');
+async function downloadReport() {
+    console.log("Download started..."); // This helps us see if the button is even 'waking up'
+
+    // 1. Gather all content inside your result cards
+    const cards = document.querySelectorAll('.result-card');
+    let combinedHTML = "";
     
-    if (!insightContent) {
-        alert('No content to copy');
+    cards.forEach(card => {
+        const title = card.querySelector('h4').innerText;
+        const insight = card.querySelector('.insight-content').innerHTML;
+        combinedHTML += `<h3>${title}</h3>${insight}<br>`;
+    });
+
+    // 2. Grab the first image
+    const firstImg = document.querySelector('.result-card img');
+    const imageBase64 = firstImg ? firstImg.src.split(',')[1] : null;
+
+    if (!combinedHTML) {
+        alert("Wait for the analysis to finish before downloading!");
         return;
     }
-    
-    // Create a temporary container
-    const tempContainer = document.createElement('div');
-    tempContainer.innerHTML = insightContent.innerHTML;
 
-    // Style elements for Word/document compatibility
-    tempContainer.style.fontFamily = 'Arial, sans-serif';
-    tempContainer.style.fontSize = '12pt';
-    tempContainer.style.color = 'black';
-    tempContainer.style.backgroundColor = 'white';
-    
-    const allElements = tempContainer.querySelectorAll('*');
-    allElements.forEach(el => {
-        el.style.color = 'black';
-        el.style.backgroundColor = 'white';
-        el.style.fontFamily = 'Arial, sans-serif';
-        
-        if (el.tagName === 'TABLE') {
-            el.setAttribute('border', '1');
-            el.setAttribute('cellpadding', '8');
-            el.setAttribute('cellspacing', '0');
-            el.style.borderCollapse = 'collapse';
-            el.style.width = '100%';
-            el.style.border = '1px solid black';
-        }
-        if (el.tagName === 'TH') {
-            el.style.border = '1px solid black';
-            el.style.padding = '8px';
-            el.style.backgroundColor = '#f0f0f0';
-            el.style.fontWeight = 'bold';
-            el.style.textAlign = 'left';
-        }
-        if (el.tagName === 'TD') {
-            el.style.border = '1px solid black';
-            el.style.padding = '8px';
-        }
-        if (el.tagName === 'B' || el.tagName === 'STRONG') {
-            el.style.fontWeight = 'bold';
-        }
-        if (el.tagName === 'H3' || el.tagName === 'H4') {
-            el.style.fontWeight = 'bold';
-            el.style.marginTop = '16px';
-            el.style.marginBottom = '8px';
-        }
-        if (el.tagName === 'P') {
-            el.style.marginBottom = '12px';
-        }
-        if (el.tagName === 'UL' || el.tagName === 'OL') {
-            el.style.marginLeft = '20px';
-            el.style.marginBottom = '12px';
-        }
-    });
+    try {
+        const response = await fetch('/export_word', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html: combinedHTML, image: imageBase64 })
+        });
 
-    // Use Clipboard API with both HTML and plain text
-    const htmlBlob = new Blob([tempContainer.outerHTML], { type: 'text/html' });
-    const textBlob = new Blob([insightContent.innerText], { type: 'text/plain' });
-    
-    const clipboardItem = new ClipboardItem({ 
-        'text/html': htmlBlob,
-        'text/plain': textBlob
-    });
-
-    navigator.clipboard.write([clipboardItem]).then(() => {
-        // Success feedback
-        const originalIcon = copyBtn.innerHTML;
-        copyBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
-        copyBtn.classList.add('copied');
-        
-        setTimeout(() => {
-            copyBtn.innerHTML = originalIcon;
-            copyBtn.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Copy failed:', err);
-        
-        // Fallback: try basic text copy
-        const textArea = document.createElement('textarea');
-        textArea.value = insightContent.innerText;
-        textArea.style.position = 'fixed';
-        textArea.style.opacity = '0';
-        document.body.appendChild(textArea);
-        textArea.select();
-        
-        try {
-            document.execCommand('copy');
-            copyBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
-            copyBtn.classList.add('copied');
-            setTimeout(() => {
-                copyBtn.innerHTML = '<i class="bi bi-copy"></i>';
-                copyBtn.classList.remove('copied');
-            }, 2000);
-        } catch (e) {
-            alert('Copy failed. Please select and copy manually (Ctrl/Cmd+C)');
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "BT_IntelliStat_Report.docx";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+            console.log("Download successful!");
+        } else {
+            const errorData = await response.json();
+            console.error("Server Error:", errorData);
+            alert("Server Error: Check your terminal for python-docx installation.");
         }
-        
-        document.body.removeChild(textArea);
-    });
+    } catch (err) {
+        console.error("Fetch Error:", err);
+        alert("Connection Error. Is your flask server running?");
+    }
 }
 
 // Close modal on ESC key
@@ -789,3 +730,12 @@ document.addEventListener('keydown', function(event) {
     }
 });
 </script>
+
+<div class="row mt-5 mb-5">
+    <div class="col-12 text-center">
+        <button onclick="downloadReport()" class="execute-btn" style="width: auto; min-width: 300px; padding: 15px 40px;">
+            <i class="bi bi-file-earmark-word-fill me-2"></i>
+            Download Professional Report (.docx)
+        </button>
+    </div>
+</div>
