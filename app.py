@@ -1,3 +1,6 @@
+from docx import Document
+from docx.shared import Inches
+from bs4 import BeautifulSoup
 import os
 import pandas as pd
 import numpy as np
@@ -20,6 +23,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 import re
+import io
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from googleapiclient.http import MediaIoBaseUpload
@@ -37,7 +41,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///repository.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -265,7 +269,7 @@ def create_custom_graph(df, graph_type):
         plt.close()
         return None
 
-def run_analysis(df, method, custom_query=None, custom_graph_type=None):
+def run_analysis(df, method, custom_query=None, custom_graph_type=None,is_multi=False):
     """Executes methodology and returns (Base64_Image_String, Stats_String, Method_Name, Has_Table)."""
     num_df = df.apply(pd.to_numeric, errors='coerce').dropna(axis=1, how='all')
     if num_df.empty:
@@ -274,6 +278,9 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None):
     imputer = SimpleImputer(strategy='mean')
     clean_num = pd.DataFrame(imputer.fit_transform(num_df), columns=num_df.columns)
     
+    if is_multi and 'Source_File' in df.columns:
+        clean_num['Source_File'] = df['Source_File'].values
+
     plt.figure(figsize=(12, 8))
     stats_str, final_name = "", method.replace("_", " ").title()
     has_table = False
@@ -300,104 +307,183 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None):
             has_table = True
             return None, summary, f"AI Recommended: {detected_name}", has_table
 
-        elif method == "correlation":
-            sns.heatmap(clean_num.corr(), annot=True, cmap='RdBu_r', center=0, 
+        hue_val='Source_File' if (is_multi and 'Source_File' in clean_num.columns) else None
+        
+        if method == "correlation":
+            corr_matrix = clean_num.select_dtypes(include=[np.number]).corr()
+            
+            sns.heatmap(corr_matrix, annot=True, cmap='RdBu_r', center=0, 
                        square=True, linewidths=1, cbar_kws={"shrink": 0.8})
-            plt.title("Correlation Heatmap", fontsize=14, fontweight='bold', pad=20)
+            
+            plt.title("Correlation Heatmap (Combined Datasets)", fontsize=14, fontweight='bold', pad=20)
             plt.tight_layout()
-            stats_str = clean_num.corr().to_string()
-
+            
+            # 2. Update stats string to show the correlation matrix
+            stats_str = corr_matrix.to_string()
+            
         elif method == "kmeans" and clean_num.shape[1] >= 2:
-            model = KMeans(n_clusters=3, n_init='auto', random_state=42).fit(clean_num)
+            km_data = clean_num.drop(columns=['Source_File'], errors='ignore')
+            
+            # 2. Fit the model
+            model = KMeans(n_clusters=3, n_init='auto', random_state=42).fit(km_data)
             clean_num['Cluster'] = model.labels_
+            
+            # 3. Determine the Hue
+            display_hue = hue_val if (is_multi and hue_val) else 'Cluster'
+            
             sns.scatterplot(data=clean_num, x=clean_num.columns[0], y=clean_num.columns[1], 
-                          hue='Cluster', palette='viridis', s=100, alpha=0.7)
+                          hue=display_hue, palette='viridis', s=100, alpha=0.7)
+            
             plt.title("K-Means Segmentation", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel(clean_num.columns[0], fontsize=12)
             plt.ylabel(clean_num.columns[1], fontsize=12)
-            plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.legend(title=display_hue, bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.tight_layout()
-            stats_str = f"Inertia: {model.inertia_:.2f}"
-
+            
+            stats_str = f"Inertia: {model.inertia_:.2f}\nClusters identified: 3"
+        
         elif method == "random_forest" and clean_num.shape[1] >= 2:
-            X = clean_num.drop(clean_num.columns[0], axis=1)
-            y = clean_num.iloc[:, 0]
-            rf = RandomForestRegressor(n_estimators=100).fit(X, y)
-            imp = pd.Series(rf.feature_importances_, index=X.columns).sort_values()
-            imp.plot(kind='barh', color='steelblue', edgecolor='black')
-            plt.title("Feature Importance", fontsize=14, fontweight='bold', pad=20)
+            rf_data = clean_num.drop(columns=['Source_File'], errors='ignore')
+            
+            X = rf_data.drop(rf_data.columns[0], axis=1)
+            y = rf_data.iloc[:, 0]
+            
+            # 2. Train the model
+            rf = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y)
+            
+            # 3. Create a Feature Importance DataFrame
+            feat_imp = pd.DataFrame({
+                'Feature': X.columns,
+                'Importance': rf.feature_importances_
+            }).sort_values(by='Importance', ascending=False)
+
+            # 4. Plot using Seaborn for better aesthetic (hue isn't used here as RF is global)
+            sns.barplot(data=feat_imp, x='Importance', y='Feature', palette='viridis', edgecolor='black')
+            
+            plt.title("Feature Importance (Global Model)", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel('Importance Score', fontsize=12)
             plt.tight_layout()
-            stats_str = imp.to_string()
+            
+            stats_str = feat_imp.to_string(index=False)
             has_table = True
-
+            
         elif method == "regression" and clean_num.shape[1] >= 2:
-            sns.regplot(data=clean_num, x=clean_num.columns[0], y=clean_num.columns[-1], 
-                       scatter_kws={'alpha':0.5, 's':50}, line_kws={'color':'red', 'linewidth':2})
-            plt.title("Linear Regression", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel(clean_num.columns[0], fontsize=12)
-            plt.ylabel(clean_num.columns[-1], fontsize=12)
+            # 1. Use lmplot for multi-file hue support
+            # Note: lmplot creates its own figure, so we don't use the existing plt.figure
+            g = sns.lmplot(data=clean_num, x=clean_num.columns[0], y=clean_num.columns[-1], 
+                           hue=hue_val if is_multi else None, palette='magma',
+                           scatter_kws={'alpha':0.5, 's':50}, height=6, aspect=1.5)
+            
+            plt.title("Comparative Linear Regression", fontsize=14, fontweight='bold', pad=20)
             plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            stats_str = "Regression Trendline calculated."
-
+            
+            # 2. Capture the figure from the FacetGrid 'g'
+            img = io.BytesIO()
+            g.figure.savefig(img, format='png', bbox_inches='tight', dpi=150)
+            img.seek(0)
+            plot_url = base64.b64encode(img.getvalue()).decode()
+            plt.close(g.figure) # Close the specific lmplot figure
+            
+            stats_str = "Multi-source regression trendlines calculated."
+            if is_multi:
+                 stats_str += " Comparison visible via color-coded slopes."
+            
+            return plot_url, stats_str, final_name, False
+        
         elif method == "anova":
-            cat_df = df.select_dtypes(exclude=[np.number])
-            if not cat_df.empty:
-                sns.boxplot(x=df[cat_df.columns[0]], y=clean_num[clean_num.columns[0]], palette='Set2')
+            # 1. Identify categorical columns (excluding our added Source_File)
+            actual_cat_cols = [c for c in df.select_dtypes(exclude=[np.number]).columns if c != 'Source_File']
+            
+            if actual_cat_cols:
+                # Use the first found categorical column for the X-axis
+                # Use hue_val to show the difference between File 1, File 2, etc.
+                sns.boxplot(data=df, x=actual_cat_cols[0], y=clean_num.columns[0], 
+                            hue=hue_val if is_multi else None, palette='Set2')
+                
                 plt.title("ANOVA: Group Variance", fontsize=14, fontweight='bold', pad=20)
-                plt.xlabel(cat_df.columns[0], fontsize=12)
+                plt.xlabel(actual_cat_cols[0], fontsize=12)
                 plt.ylabel(clean_num.columns[0], fontsize=12)
                 plt.xticks(rotation=45)
                 plt.tight_layout()
-                stats_str = "Group differences visualized via Boxplot."
+                stats_str = f"Variance analysis for {actual_cat_cols[0]}."
             else:
-                sns.boxenplot(data=clean_num, palette='muted')
+                # If no categories exist, use Source_File as the primary category
+                display_x = 'Source_File' if is_multi else None
+                sns.boxenplot(data=clean_num, x=display_x, palette='muted')
+                
                 plt.title("Numeric Distributions", fontsize=14, fontweight='bold', pad=20)
                 plt.xticks(rotation=45)
                 plt.tight_layout()
-                stats_str = "No categorical data found; displaying numeric distributions."
-
+                stats_str = "Comparison of numeric distributions across datasets."
+                
         elif method == "pca" and clean_num.shape[1] >= 2:
+            # 1. Prepare data (Drop Source_File and Cluster columns if they exist for math)
+            pca_data = clean_num.drop(columns=['Source_File', 'Cluster'], errors='ignore')
+            
             pca = PCA(n_components=2)
-            components = pca.fit_transform(clean_num)
-            plt.scatter(components[:, 0], components[:, 1], c='blue', alpha=0.6, s=50, edgecolors='black')
+            components = pca.fit_transform(pca_data)
+            
+            # 2. Create a temporary DataFrame for plotting
+            pca_df = pd.DataFrame(data=components, columns=['PC1', 'PC2'])
+            if is_multi:
+                pca_df['Source_File'] = clean_num['Source_File'].values
+            
+            # 3. Use Seaborn to handle the 'hue' correctly
+            sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue=hue_val if is_multi else None, 
+                            palette='cool', s=60, alpha=0.7, edgecolor='black')
+            
             plt.title("PCA Dimensionality Reduction", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})', fontsize=12)
             plt.ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})', fontsize=12)
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            stats_str = f"Explained Variance: {pca.explained_variance_ratio_}"
+            
+            stats_str = f"Explained Variance Ratio: {pca.explained_variance_ratio_}"
             has_table = True
-
+            
         elif method == "ttest" and clean_num.shape[1] >= 1:
-            sns.kdeplot(clean_num.iloc[:, 0], fill=True, color='purple', alpha=0.6)
+            # REMOVED color='purple' to allow hue_val to differentiate datasets
+            sns.kdeplot(data=clean_num, x=clean_num.columns[0], hue=hue_val, 
+                        fill=True, palette='magma', alpha=0.5)
+            
             plt.title("T-Test Distribution Analysis", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel(clean_num.columns[0], fontsize=12)
             plt.ylabel('Density', fontsize=12)
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            stats_str = f"Mean of target: {clean_num.iloc[:,0].mean():.2f}"
+            
+            # Show group-specific means if comparing files
+            if is_multi:
+                stats_str = "Group Means:\n" + clean_num.groupby('Source_File')[clean_num.columns[0]].mean().to_string()
+            else:
+                stats_str = f"Mean of target: {clean_num.iloc[:,0].mean():.2f}"
             has_table = True
-
+        
         elif method == "distribution":
-            sns.histplot(clean_num.iloc[:, 0], kde=True, color='green', bins=30, edgecolor='black')
+            sns.histplot(data=clean_num, x=clean_num.columns[0], hue=hue_val, 
+                         kde=True, bins=30, edgecolor='black', palette='viridis')
+            
             plt.title("Frequency Distribution", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel(clean_num.columns[0], fontsize=12)
             plt.ylabel('Frequency', fontsize=12)
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            stats_str = f"Mean: {clean_num.iloc[:,0].mean():.2f}, SD: {clean_num.iloc[:,0].std():.2f}"
+            if is_multi:
+                stats_str = clean_num.groupby('Source_File')[clean_num.columns[0]].mean().to_string()
+            else:
+                stats_str = f"Mean: {clean_num.iloc[:,0].mean():.2f}, SD: {clean_num.iloc[:,0].std():.2f}"
             has_table = True
 
         elif method == "timeseries":
-            plt.plot(clean_num.iloc[:, 0], marker='o', linestyle='-', linewidth=2, markersize=5)
+            sns.lineplot(data=clean_num, x=clean_num.index, y=clean_num.columns[0], 
+                         hue=hue_val, marker='o', linewidth=2, markersize=5)
+            
             plt.title("Temporal Trend Analysis", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel('Time Index', fontsize=12)
             plt.ylabel(clean_num.columns[0], fontsize=12)
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            stats_str = "Time-series data plotted sequentially."
+            stats_str = "Time-series data plotted sequentially by source."
 
         elif method == "other":
             if custom_graph_type:
@@ -409,7 +495,7 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None):
             else:
                 if clean_num.shape[1] >= 2:
                     pairplot_data = clean_num.iloc[:, :4]
-                    g = sns.pairplot(pairplot_data, diag_kind='kde', plot_kws={'alpha':0.6, 's':50})
+                    g = sns.pairplot(pairplot_data, hue=hue_val,diag_kind='kde', plot_kws={'alpha':0.6, 's':50})
                     g.fig.suptitle(f"Custom Pairplot: {custom_query[:30]}", y=1.01, fontsize=14, fontweight='bold')
                     plt.tight_layout()
                 else:
@@ -466,83 +552,72 @@ def dashboard():
         return redirect(url_for('index'))
     
     results = []
-    current_filename = "Unknown File"
+    current_filenames = []
 
     if request.method == "POST":
-        file = request.files.get("file")
-        mode = request.form.get("mode")
-        m1, m2 = request.form.get("method"), request.form.get("method2")
-        custom_txt = request.form.get("custom_query")
-        custom_graph = request.form.get("custom_graph_type")
-
-        # 1. Handle File Upload or Retrieval with Google Drive Check
-        if file and file.filename != '':
-            current_filename = file.filename
-            local_path = os.path.join(UPLOAD_FOLDER, current_filename)
-            file.save(local_path)  # Always save locally for current processing
-            session['last_file'] = local_path
-
-            try:
-                # Initialize Drive Service
-                creds = Credentials(token=session['google_token']['access_token'])
-                drive_service = build('drive', 'v3', credentials=creds)
+        # 1. MULTI-FILE UPLOAD & AGGREGATION
+        uploaded_files = request.files.getlist("file")
+        file_count_setting = int(request.form.get("file_count", 1))
+        
+        # Enforce count constraint on backend
+        uploaded_files = uploaded_files[:file_count_setting]
+        
+        all_dfs = []
+        for i, file in enumerate(uploaded_files):
+            if file and file.filename != '':
+                filename = file.filename
+                current_filenames.append(filename)
+                local_path = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(local_path)
                 
-                # Check if file exists on Drive
-                query = f"name = '{current_filename}' and trashed = false"
-                drive_response = drive_service.files().list(q=query, fields="files(id, name)").execute()
-                existing_files = drive_response.get('files', [])
+                temp_df = pd.read_csv(local_path, encoding='latin1')
+                # Add Source_File column for comparison
+                temp_df['Source_File'] = f"Dataset {i+1}: {filename}"
+                all_dfs.append(temp_df)
 
-                if not existing_files:
-                    # File not on Drive -> Upload it
-                    file_metadata = {'name': current_filename}
-                    media = MediaFileUpload(local_path, mimetype='text/csv')
-                    drive_service.files().create(body=file_metadata, media_body=media).execute()
-                    print(f"Uploaded {current_filename} to Drive.")
-                else:
-                    print(f"{current_filename} already exists on Drive. Skipping upload.")
+        if not all_dfs:
+            return jsonify({"status": "error", "message": "No files uploaded"})
+
+        # Backend Aggregation
+        df = pd.concat(all_dfs, ignore_index=True) if len(all_dfs) > 1 else all_dfs[0]
+        is_multi = len(all_dfs) > 1
+        
+        mode = "comparative" if is_multi else request.form.get("mode")
+        m1 = request.form.get("method")
+        m2 = request.form.get("method2")
+
+        try:
+            # 2. PERFORM ANALYSIS (With Comparison Logic)
+            p1, s1, n1, t1 = run_analysis(df, m1, is_multi=is_multi)
             
-            except Exception as e:
-                print(f"Drive Check/Upload Error: {e}")
-
-        elif session.get('last_file'):
-            current_filename = os.path.basename(session.get('last_file'))
-
-        # 2. Perform Analysis
-        if session.get('last_file'):
-            try:
-                df = pd.read_csv(session['last_file'], encoding='latin1')
-                
-                # First analysis
-                p1, s1, n1, t1 = run_analysis(df, m1, custom_txt, custom_graph)
-                i1 = get_professional_insight(n1, s1, df.describe().to_string())
-                results.append({'plot': p1, 'insight': i1, 'name': n1, 'has_table': t1})
-
-                # Comparative analysis
-                if mode == "comparative" and m2:
-                    p2, s2, n2, t2 = run_analysis(df, m2)
-                    i2 = get_professional_insight(f"Compare: {n1} vs {n2}", f"M1: {s1} | M2: {s2}", df.describe().to_string(), True)
-                    results.append({'plot': p2, 'insight': i2, 'name': n2, 'has_table': t2})
+            # Summary Focus on Delta/Outliers if multi-file
+            context_summary = df.groupby('Source_File').describe().to_string() if is_multi else df.describe().to_string()
             
-            except Exception as e:
-                results = [{'plot': None, 'insight': f'<p><b>Error processing file:</b> {str(e)}</p>', 'name': 'Error', 'has_table': False}]
+            i1 = get_professional_insight(n1, s1, context_summary, is_comparison=is_multi)
+            results.append({'plot': p1, 'insight': i1, 'name': n1, 'has_table': t1})
 
-            # 3. Save Analysis History to appDataFolder
-            if results and results[0]['name'] != 'Error':
-                save_to_repository(
-                    session.get('user_email'), 
-                    current_filename, 
-                    results[0]['name'], 
-                    render_template("dashboard_partial.html", results=results, mode=mode)
-                    )
+            if mode == "comparative" and m2 and not is_multi:
+                p2, s2, n2, t2 = run_analysis(df, m2)
+                i2 = get_professional_insight(f"Compare: {n1} vs {n2}", f"M1: {s1} | M2: {s2}", context_summary, True)
+                results.append({'plot': p2, 'insight': i2, 'name': n2, 'has_table': t2})
             
+        except Exception as e:
+            results = [{'plot': None, 'insight': f'<p><b>Processing Error:</b> {str(e)}</p>', 'name': 'Error'}]
+
+        # 3. Save to Repository
+        save_to_repository(
+            session.get('user_email'), 
+            ", ".join(current_filenames), 
+            results[0]['name'], 
+            render_template("dashboard_partial.html", results=results, mode=mode)
+        )
             # 4. Return AJAX Response
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({
-                    "status": "success",
-                    "filename": current_filename,
-                    "method": results[0]['name'] if results else "Analysis",
-                    "html": render_template("dashboard_partial.html", results=results, mode=mode)
-                    })
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "status": "success",
+                "filename": ", ".join(current_filenames),
+                "html": render_template("dashboard_partial.html", results=results, mode=mode)
+            })
 
     return render_template("dashboard.html", user=session.get('user_name'))
 
@@ -573,6 +648,69 @@ def get_analysis_detail(record_id):
         "html": item.result_html
     })
 
+from docx import Document
+from docx.shared import Inches
+from bs4 import BeautifulSoup
+import io
+
+@app.route("/export_word", methods=["POST"])
+def export_word():
+    if 'user_email' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    # Get the HTML and Image from the request
+    data = request.json
+    html_content = data.get('html', '')
+    image_base64 = data.get('image', None)
+    
+    doc = Document()
+    doc.add_heading('BT IntelliStat - Analysis Report', 0)
+    doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # 1. Add the Visual (if exists)
+    if image_base64:
+        try:
+            image_data = base64.b64decode(image_base64)
+            image_stream = io.BytesIO(image_data)
+            doc.add_heading('Statistical Visualization', level=1)
+            doc.add_picture(image_stream, width=Inches(6))
+        except Exception as e:
+            doc.add_paragraph(f"[Image could not be rendered: {e}]")
+
+    # 2. Add the AI Insights (Parsing HTML to Word)
+    doc.add_heading('AI Insights & Mathematical Interpretation', level=1)
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    for element in soup.find_all(['h3', 'p', 'li', 'table']):
+        if element.name == 'h3':
+            doc.add_heading(element.get_text(), level=2)
+        elif element.name == 'p':
+            doc.add_paragraph(element.get_text())
+        elif element.name == 'li':
+            doc.add_paragraph(f"• {element.get_text()}", style='List Bullet')
+        elif element.name == 'table':
+            # Create a native Word table
+            rows = element.find_all('tr')
+            if rows:
+                cols = len(rows[0].find_all(['td', 'th']))
+                table = doc.add_table(rows=len(rows), cols=cols)
+                table.style = 'Table Grid'
+                for i, row in enumerate(rows):
+                    cells = row.find_all(['td', 'th'])
+                    for j, cell in enumerate(cells):
+                        table.cell(i, j).text = cell.get_text()
+
+    # Save to memory and send
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    
+    return send_file(
+        file_stream,
+        as_attachment=True,
+        download_name="BT_IntelliStat_Report.docx",
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 @app.route("/logout")
 def logout():
