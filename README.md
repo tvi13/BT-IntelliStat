@@ -1,4 +1,4 @@
-📊 BT IntelliStat (Pro)
+📊 BT IntelliStat
 Comparative Multi-Dataset Research & AI-Driven Statistical Analysis
 
 BT IntelliStat is a professional-grade analytical platform designed for researchers who need to compare datasets and extract cross-functional insights. Unlike standard tools, IntelliStat identifies deltas, trends, and correlations across multiple files simultaneously, combining the precision of the Python Scientific Stack with the reasoning power of Llama-3.3.
@@ -14,12 +14,7 @@ Professional .docx Export: A custom server-side document generator that exports 
 
 Secure Cloud Lifecycle: Full Google OAuth 2.0 integration with persistent analysis history stored in the secure Google Drive appDataFolder.
 
-🧪 Analytical Methodologies
-Category	Methodologies	Comparative Capability
-Cluster & Dimension	K-Means, PCA	Identifies if distinct files form unique mathematical "clouds."
-Statistical Variance	ANOVA, T-Test	Analyzes p-values and distribution shifts between sources.
-Predictive Modeling	Random Forest, Linear Regression	Cross-file trendline analysis and global feature importance.
-Exploratory	Correlation Heatmaps, Histograms	Identifies how variables from different sources interact.
+
 🛠️ Tech Stack & Architecture
 Logic: Python 3.10+ / Flask
 
