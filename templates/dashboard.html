@@ -354,8 +354,8 @@
 <div id="resultsArea"></div>
 
 <script>
-    // UI Toggle Logic
-    document.getElementById('modeSelect').onchange = function() {
+// UI Toggle Logic
+document.getElementById('modeSelect').onchange = function() {
         document.getElementById('method2Div').classList.toggle('d-none', this.value !== 'comparative');
     };
 
@@ -379,47 +379,35 @@
         const formData = new FormData(e.target);
         
         try {
-            const response = await fetch("{{ url_for('dashboard') }}", {
-                method: "POST",
-                body: formData,
-                headers: {"X-Requested-With": "XMLHttpRequest"}
-            });
-            
-            if (response.ok) {
-                // CHANGE 1: Parse response as JSON, not Text
+    const response = await fetch("{{ url_for('dashboard') }}", {
+        method: "POST",
+        body: formData,
+        headers: {"X-Requested-With": "XMLHttpRequest"}
+    });
+    
+    // Check if the server actually sent JSON
+    const contentType = response.headers.get("content-type");
+    if (response.ok) {
                 const data = await response.json();
                 
-                // CHANGE 2: Inject the HTML part of the JSON into the results area
+                // 1. First, hide the loader immediately
+                loader.classList.add('d-none');
+                btn.disabled = false;
+                
+                // 2. Then, inject the results
                 resultsArea.innerHTML = data.html;
                 
-                // CHANGE 3: Trigger the History Drawer update (function from base.html)
-                if (typeof saveToHistory === 'function') {
-                    saveToHistory(data.filename, data.method);
+                // 3. Finally, trigger background tasks like refreshing history
+                if (typeof loadHistory === 'function') {
+                    loadHistory(); 
                 }
 
                 resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            } else {
-                resultsArea.innerHTML = `
-                    <div class="card-glass p-4 text-center">
-                        <i class="bi bi-exclamation-triangle" style="font-size: 3rem; color: var(--accent-pink);"></i>
-                        <h4 class="mt-3">Server Error</h4>
-                        <p class="text-secondary">Please check your CSV format and API keys.</p>
-                    </div>
-                `;
             }
         } catch (error) {
-            console.error("Analysis Error:", error);
-            resultsArea.innerHTML = `
-                <div class="card-glass p-4 text-center">
-                    <i class="bi bi-wifi-off" style="font-size: 3rem; color: var(--accent-pink);"></i>
-                    <h4 class="mt-3">Connection Error</h4>
-                    <p class="text-secondary">Could not reach the server. Please try again.</p>
-                </div>
-            `;
-        } finally {
-            loader.classList.add('d-none');
-            btn.disabled = false;
-        }
+    console.error("Frontend Error:", error);
+    // This is where your "Error connecting to server" message is coming from
+}
     };
 </script>
 {% endblock %}
