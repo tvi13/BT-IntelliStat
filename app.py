@@ -20,21 +20,39 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 import re
+from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from googleapiclient.http import MediaIoBaseUpload
 
 app = Flask(__name__)
 
 # --- CONFIGURATION (Use Environment Variables) ---
-app.secret_key = os.environ.get("SECRET_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+app.secret_key = os.environ.get("SECRET_KEY", "55aa7d3a862e341662f3a3fd2dce6260aa4f52a5c2350adc")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDDEb9Nre6URJXCZMgyEBfQBxwpVLyV7cU")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "997015905226-mu61c65b3bjfhnenpij19svmq524kv9e.apps.googleusercontent.com")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///repository.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Database Model for History
+class AnalysisHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_email = db.Column(db.String(120), nullable=False)
+    filename = db.Column(db.String(200))
+    method = db.Column(db.String(100))
+    result_html = db.Column(db.Text)  # Stores the full rendered HTML results
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+# Initialize the database file
+with app.app_context():
+    db.create_all()
 
 # Initialize Groq client with error handling
 try:
@@ -49,7 +67,7 @@ google = oauth.register(
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly'
+    client_kwargs={'scope': 'openid email profile https://www.googleapis.com/auth/drive.appdata'
 },
 )
 
@@ -410,32 +428,18 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None):
         plt.close()
         return None, f"Error: {str(e)}", final_name, False
 
-def save_analysis_to_drive(filename, method, html_content):
-    if 'google_token' not in session: return
+def save_to_repository(email, filename, method, html_content):
     try:
-        creds = Credentials(token=session['google_token']['access_token'])
-        service = build('drive', 'v3', credentials=creds)
-
-        analysis_data = {
-            "filename": filename,
-            "method": method,
-            "timestamp": datetime.now().isoformat(),
-            "html": html_content
-        }
-        
-        file_metadata = {
-            'name': f"BT_{filename}_{method}.json",
-            'parents': ['appDataFolder'] # Save in hidden folder
-        }
-        
-        media = MediaIoBaseUpload(
-            io.BytesIO(json.dumps(analysis_data).encode('utf-8')),
-            mimetype='application/json'
+        new_entry = AnalysisHistory(
+            user_email=email,
+            filename=filename,
+            method=method,
+            result_html=html_content
         )
-        
-        service.files().create(body=file_metadata, media_body=media).execute()
+        db.session.add(new_entry)
+        db.session.commit()
     except Exception as e:
-        print(f"Drive Error: {e}")
+        print(f"Repository Error: {e}")
 
 # --- ROUTES ---
 
@@ -451,7 +455,9 @@ def login_google():
 def google_auth():
     token = google.authorize_access_token()
     user = google.get('https://openidconnect.googleapis.com/v1/userinfo').json()
-    session['google_token'], session['user_name'] = token, user.get('name')
+    session['google_token'] = token
+    session['user_name'] = user.get('name')
+    session['user_email'] = user.get('email')
     return redirect(url_for('dashboard'))
 
 @app.route("/dashboard", methods=["GET", "POST"])
@@ -522,7 +528,12 @@ def dashboard():
 
             # 3. Save Analysis History to appDataFolder
             if results and results[0]['name'] != 'Error':
-                save_analysis_to_drive(current_filename, results[0]['name'], render_template("dashboard_partial.html", results=results, mode=mode))
+                save_to_repository(
+                    session.get('user_email'), 
+                    current_filename, 
+                    results[0]['name'], 
+                    render_template("dashboard_partial.html", results=results, mode=mode)
+                    )
             
             # 4. Return AJAX Response
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -531,37 +542,36 @@ def dashboard():
                     "filename": current_filename,
                     "method": results[0]['name'] if results else "Analysis",
                     "html": render_template("dashboard_partial.html", results=results, mode=mode)
-                })
+                    })
 
     return render_template("dashboard.html", user=session.get('user_name'))
 
-@app.route("/get_cloud_history")
-def get_cloud_history():
-    if 'google_token' not in session: return jsonify([])
-    try:
-        creds = Credentials(token=session['google_token']['access_token'])
-        service = build('drive', 'v3', credentials=creds)
-        
-        # Specify 'appDataFolder' in the spaces parameter
-        results = service.files().list(
-            spaces='appDataFolder', 
-            q="trashed = false",
-            fields="files(id, name, createdTime)",
-            pageSize=15
-        ).execute()
-        
-        return jsonify(results.get('files', []))
-    except Exception as e:
-        print(f"History Fetch Error: {e}") # This will show the error in your terminal
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/get_analysis_detail/<file_id>")
-def get_analysis_detail(file_id):
-    creds = Credentials(token=session['google_token']['access_token'])
-    service = build('drive', 'v3', credentials=creds)
+@app.route("/get_repository_history")
+def get_repository_history():
+    if 'user_email' not in session: return jsonify([])
     
-    content = service.files().get_media(fileId=file_id).execute()
-    return jsonify(json.loads(content))
+    # Fetch all history for this specific user, newest first
+    history_items = AnalysisHistory.query.filter_by(user_email=session['user_email'])\
+                    .order_by(AnalysisHistory.timestamp.desc()).all()
+    
+    return jsonify([{
+        "id": item.id,
+        "name": f"{item.filename} ({item.method})",
+        "createdTime": item.timestamp.strftime("%Y-%m-%d")
+    } for item in history_items])
+
+@app.route("/get_analysis_detail/<int:record_id>")
+def get_analysis_detail(record_id):
+    if 'user_email' not in session: return jsonify({"error": "Unauthorized"}), 401
+    
+    # Ensure user can only access their own records
+    item = AnalysisHistory.query.filter_by(id=record_id, user_email=session['user_email']).first_or_404()
+    
+    return jsonify({
+        "filename": item.filename,
+        "method": item.method,
+        "html": item.result_html
+    })
 
 
 @app.route("/logout")
