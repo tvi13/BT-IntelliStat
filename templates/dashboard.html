@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
+    .guide-card {
+        background: rgba(102, 126, 234, 0.05);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        animation: fadeInUp 0.6s ease;
+    }
+
+    .guide-step {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 10px;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .guide-step i { color: var(--accent-purple); }
+
+    .file-count-badge {
+        background: var(--accent-purple);
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+
     .page-title {
         font-family: 'Space Grotesk', sans-serif;
         font-size: 2.5rem;
@@ -230,26 +257,69 @@
     Analysis Dashboard
 </div>
 
+<div class="guide-card">
+    <h6 class="text-white mb-3" style="letter-spacing: 1px; font-weight: 700;">
+        <i class="bi bi-info-circle-fill me-2"></i>QUICK START GUIDE
+    </h6>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="guide-step">
+                <i class="bi bi-1-circle"></i>
+                <span><strong>Select Volume:</strong> Choose 1-3 datasets for analysis.</span>
+            </div>
+            <div class="guide-step">
+                <i class="bi bi-2-circle"></i>
+                <span><strong>Match Headers:</strong> Column names must be identical for 2+ files.</span>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="guide-step">
+                <i class="bi bi-3-circle"></i>
+                <span><strong>Clean Data:</strong> Remove empty rows (AI interprets blanks as 0).</span>
+            </div>
+            <div class="guide-step">
+                <i class="bi bi-4-circle"></i>
+                <span><strong>Constraints:</strong> Max 10MB per file (.csv or .xlsx).</span>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="p-2 rounded" style="background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.2);">
+                <p class="mb-0" style="font-size: 0.75rem; color: #ffc107; line-height: 1.4;">
+                    <strong><i class="bi bi-exclamation-triangle"></i> AI Note:</strong> Auto-Detect mode optimizes selection logic but <strong>does not generate visuals</strong> to ensure 100% mathematical fidelity.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="analysis-form">
     <form id="analysisForm" enctype="multipart/form-data">
+        
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <label class="form-label">Number of Datasets</label>
+                <select name="file_count" id="fileCount" class="form-select">
+                    <option value="1">1 Dataset (Singular)</option>
+                    <option value="2">2 Datasets (Comparative)</option>
+                    <option value="3">3 Datasets (Comparative)</option>
+                </select>
+            </div>
+        </div>
+
         <div class="form-section">
-            <label class="form-label">
-                Upload Dataset
-            </label>
-            <div class="upload-zone" onclick="document.querySelector('input[name=file]').click()">
-                <div class="upload-icon">📊</div>
-                <div style="font-weight: 600; margin-bottom: 0.5rem;">Drop your file here or click to browse</div>
-                <div style="font-size: 0.85rem; color: var(--text-secondary);">Maximum file size: 10MB</div>
-                <input type="file" name="file" class="d-none" accept=".csv,.xlsx,.xls" required onchange="this.closest('.upload-zone').querySelector('.upload-icon').textContent = '✅'">
+            <label class="form-label">Upload Dataset(s)</label>
+            <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon" id="uploadIcon">📊</div>
+                <div id="uploadText" style="font-weight: 600; margin-bottom: 0.5rem;">Click to upload up to 1 file</div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary);">Constraint: Max 10MB per file</div>
+                <input type="file" name="file" id="fileInput" class="d-none" accept=".csv,.xlsx,.xls" required multiple>
             </div>
         </div>
 
         <div class="row g-3">
-            <div class="col-md-6">
+            <div class="col-md-6" id="scopeDiv">
                 <div class="form-section">
-                    <label class="form-label">
-                        Analysis Scope
-                    </label>
+                    <label class="form-label">Analysis Scope</label>
                     <select name="mode" id="modeSelect" class="form-select">
                         <option value="singular">🎯 Singular Methodology</option>
                         <option value="comparative">⚖️ Comparative Analysis</option>
@@ -354,6 +424,53 @@
 <div id="resultsArea"></div>
 
 <script>
+    const fileCountSelect = document.getElementById('fileCount');
+    const fileInput = document.getElementById('fileInput');
+    const uploadText = document.getElementById('uploadText');
+    const modeSelect = document.getElementById('modeSelect');
+    const scopeDiv = document.getElementById('scopeDiv');
+
+    // Update instruction text when dropdown changes
+    fileCountSelect.onchange = function() {
+        const count = this.value;
+        uploadText.innerText = `Click to upload up to ${count} file(s)`;
+        
+        // AUTOMATIC MODE SWITCH: If count > 1, lock into Comparative
+        if (count > 1) {
+            modeSelect.value = 'comparative';
+            scopeDiv.style.opacity = '0.5';
+            modeSelect.style.pointerEvents = 'none'; // Lock the select
+        } else {
+            modeSelect.value = 'singular';
+            scopeDiv.style.opacity = '1';
+            modeSelect.style.pointerEvents = 'auto';
+        }
+    };
+
+    // ENFORCED CONSTRAINTS: JS Validation for Count and Size
+    fileInput.onchange = function() {
+        const maxAllowed = parseInt(fileCountSelect.value);
+        const files = this.files;
+
+        // Constraint: Count
+        if (files.length > maxAllowed) {
+            alert(`Error: You selected ${files.length} files, but the limit is set to ${maxAllowed}.`);
+            this.value = ""; // Clear selection
+            document.getElementById('uploadIcon').textContent = "📊";
+            return;
+        }
+
+        // Constraint: Size (10MB)
+        for (let file of files) {
+            if (file.size > 10 * 1024 * 1024) {
+                alert(`Error: File "${file.name}" exceeds the 10MB limit.`);
+                this.value = "";
+                return;
+            }
+        }
+
+        document.getElementById('uploadIcon').textContent = "✅";
+    };
 // UI Toggle Logic
 document.getElementById('modeSelect').onchange = function() {
         document.getElementById('method2Div').classList.toggle('d-none', this.value !== 'comparative');
@@ -410,4 +527,47 @@ document.getElementById('modeSelect').onchange = function() {
 }
     };
 </script>
+<script>
+    async function downloadReport() {
+        console.log("Export initiated...");
+        
+        // 1. Target the insights and image
+        const insightElements = document.querySelectorAll('.insight-content');
+        const plotImg = document.querySelector('.result-card img');
+    
+        if (insightElements.length === 0) {
+            alert("Please run an analysis first!");
+            return;
+        }
+    
+        // Combine all insights into one string
+        const combinedHTML = Array.from(insightElements).map(el => el.innerHTML).join('<hr>');
+        const imageBase64 = plotImg ? plotImg.src.split(',')[1] : null;
+    
+        try {
+            const response = await fetch("{{ url_for('export_word') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ html: combinedHTML, image: imageBase64 })
+            });
+    
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "BT_IntelliStat_Report.docx";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } else {
+                alert("Server Error: Check if python-docx and beautifulsoup4 are installed.");
+            }
+        } catch (err) {
+            console.error("Fetch error:", err);
+            alert("Connection failed. Ensure your Flask server is running.");
+        }
+    }
+    </script>
 {% endblock %}
