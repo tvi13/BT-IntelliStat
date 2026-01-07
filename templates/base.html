@@ -601,16 +601,28 @@
         {% block content %}{% endblock %}
     </div>
 
-    <footer class="text-center">
+    <footer class="text-center py-4" style="border-top: 1px solid rgba(255, 255, 255, 0.05); background: transparent;">
         <div class="container">
-            <p class="mb-2 glow-text" style="font-weight: 600;">© 2026 BT IntelliStat</p>
-            <p class="mb-0 small" style="color: var(--text-secondary);">
-                <i class="bi bi-shield-check me-1"></i> Encrypted Processing via Google Cloud
+            <p class="mb-1" style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); letter-spacing: 0.3px;">
+                © <span id="currentYear"></span> All rights reserved. BT IntelliStat.
             </p>
+            
+            <p class="mb-2" style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.35); font-weight: 300;">
+                A product of <span style="color: rgba(255, 255, 255, 0.5); font-weight: 400;">Universal AI University</span>.
+            </p>
+            
+            <div class="d-flex align-items-center justify-content-center opacity-50" style="font-size: 0.7rem; gap: 6px; color: var(--text-secondary);">
+                <i class="bi bi-shield-check"></i>
+                <span>Encrypted Processing via Google Cloud</span>
+            </div>
         </div>
     </footer>
 
     <script>
+    const yearElement = document.getElementById("currentYear");
+    if(yearElement) {
+        yearElement.textContent = new Date().getFullYear();
+    }
         // Toggle History Drawer
         function toggleDrawer() {
             const drawer = document.getElementById('historyDrawer');
@@ -646,78 +658,76 @@
         });
 
         // Load Analysis History
+        // Load Analysis History from Local Repository
         async function loadHistory() {
-    const historyContent = document.getElementById('historyContent');
-    historyContent.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p>Fetching from Cloud...</p></div>';
-    
-    try {
-        const response = await fetch('/get_cloud_history');
-        
-        if (!response.ok) {
-            const error = await response.json();
-            historyContent.innerHTML = `<div class="empty-history">
-                <i class="bi bi-exclamation-triangle"></i>
-                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">Error Loading History</div>
-                <div style="font-size: 0.9rem;">${error.error || 'Unable to fetch cloud history'}</div>
-            </div>`;
-            return;
-        }
-        
-        const files = await response.json();
-        
-        if (files.length === 0) {
-            historyContent.innerHTML = `<div class="empty-history">
-                <i class="bi bi-inbox"></i>
-                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">No History Yet</div>
-                <div style="font-size: 0.9rem;">Your analysis history will appear here</div>
-            </div>`;
-            return;
-        }
-        
-        historyContent.innerHTML = files.map(file => `
-            <div class="history-item" onclick="loadCloudAnalysis('${file.id}')">
-                <div class="history-item-title">
-                    <i class="bi bi-file-earmark-bar-graph"></i>
-                    ${file.name.replace('BT_', '').replace('.json', '')}
-                </div>
-                <div class="history-item-date">${new Date(file.createdTime).toLocaleString()}</div>
-            </div>
-        `).join('');
-    } catch (e) {
-        console.error('History loading error:', e);
-        historyContent.innerHTML = `<div class="empty-history">
-            <i class="bi bi-wifi-off"></i>
-            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">Connection Error</div>
-            <div style="font-size: 0.9rem;">Unable to reach cloud storage</div>
-        </div>`;
-    }
-}
-
-        // Save analysis to history
-        function saveToHistory(filename, method) {
-            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            const historyContent = document.getElementById('historyContent');
+            historyContent.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p>Accessing Repository...</p></div>';
             
-            history.push({
-                filename: filename,
-                method: method,
-                timestamp: new Date().toISOString()
-            });
-            
-            // Keep only last 50 analyses
-            if (history.length > 50) {
-                history.shift();
+            try {
+                // Point to the new local repository route
+                const response = await fetch('/get_repository_history');
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    historyContent.innerHTML = `<div class="empty-history">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">Error Loading History</div>
+                        <div style="font-size: 0.9rem;">${error.error || 'Unable to fetch repository history'}</div>
+                    </div>`;
+                    return;
+                }
+                
+                const items = await response.json();
+                
+                if (items.length === 0) {
+                    historyContent.innerHTML = `<div class="empty-history">
+                        <i class="bi bi-inbox"></i>
+                        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">No History Yet</div>
+                        <div style="font-size: 0.9rem;">Your analysis history will appear here</div>
+                    </div>`;
+                    return;
+                }
+                
+                // Render items using the Database ID
+                historyContent.innerHTML = items.map(item => `
+                    <div class="history-item" onclick="loadRepositoryAnalysis('${item.id}')">
+                        <div class="history-item-title">
+                            <i class="bi bi-file-earmark-bar-graph"></i>
+                            ${item.name}
+                        </div>
+                        <div class="history-item-date">${item.createdTime}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('History loading error:', e);
+                historyContent.innerHTML = `<div class="empty-history">
+                    <i class="bi bi-database-exclamation"></i>
+                    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">Repository Error</div>
+                    <div style="font-size: 0.9rem;">Unable to access local database</div>
+                </div>`;
             }
-            
-            localStorage.setItem('analysisHistory', JSON.stringify(history));
         }
 
-        // Load specific analysis (implement based on your needs)
-        async function loadCloudAnalysis(fileId) {
-    const response = await fetch(`/get_analysis_detail/${fileId}`);
-    const data = await response.json();
-    document.getElementById('resultsArea').innerHTML = data.html;
-    closeDrawer();
-}
+        // Load specific analysis from Repository
+        async function loadRepositoryAnalysis(recordId) {
+            try {
+                const response = await fetch(`/get_analysis_detail/${recordId}`);
+                if (!response.ok) throw new Error('Failed to fetch detail');
+                
+                const data = await response.json();
+                
+                // Update the results area on the dashboard
+                const resultsArea = document.getElementById('resultsArea');
+                if (resultsArea) {
+                    resultsArea.innerHTML = data.html;
+                    resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                closeDrawer();
+            } catch (error) {
+                console.error('Error loading detail:', error);
+                alert("Failed to load analysis details.");
+            }
+        }
 
         // Close dropdown on ESC key
         document.addEventListener('keydown', function(event) {
