@@ -269,17 +269,17 @@
             </div>
             <div class="guide-step">
                 <i class="bi bi-2-circle"></i>
-                <span><strong>Match Headers:</strong> Column names must be identical for 2+ files.</span>
+                <span><strong>Match Headers:</strong> Column names must be identical for files.</span>
             </div>
         </div>
         <div class="col-md-4">
             <div class="guide-step">
                 <i class="bi bi-3-circle"></i>
-                <span><strong>Clean Data:</strong> Remove empty rows (AI interprets blanks as 0).</span>
+                <span><strong>Clean Data:</strong> Remove empty rows (AI interprets it as 0).</span>
             </div>
             <div class="guide-step">
                 <i class="bi bi-4-circle"></i>
-                <span><strong>Constraints:</strong> Max 10MB per file (.csv or .xlsx).</span>
+                <span><strong>Constraints:</strong> Max 10MB per file.</span>
             </div>
         </div>
         <div class="col-md-4">
@@ -496,11 +496,11 @@ document.getElementById('modeSelect').onchange = function() {
         const formData = new FormData(e.target);
         
         try {
-    const response = await fetch("{{ url_for('dashboard') }}", {
-        method: "POST",
-        body: formData,
-        headers: {"X-Requested-With": "XMLHttpRequest"}
-    });
+            const response = await fetch("{{ url_for('dashboard') }}", {
+                 method: "POST",
+                 body: formData,
+                 headers: {"X-Requested-With": "XMLHttpRequest"}
+                });
     
     // Check if the server actually sent JSON
     const contentType = response.headers.get("content-type");
@@ -529,6 +529,8 @@ document.getElementById('modeSelect').onchange = function() {
 </script>
 <script>
     async function downloadReport() {
+        const localTimestamp = new Date().toLocaleString();
+
         console.log("Export initiated...");
         
         // 1. Target the insights and image
@@ -548,7 +550,7 @@ document.getElementById('modeSelect').onchange = function() {
             const response = await fetch("{{ url_for('export_word') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ html: combinedHTML, image: imageBase64 })
+                body: JSON.stringify({ html: combinedHTML, image: imageBase64, local_time: localTimestamp})
             });
     
             if (response.ok) {
