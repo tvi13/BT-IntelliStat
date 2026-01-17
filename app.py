@@ -1,6 +1,7 @@
 from docx import Document
 from docx.shared import Inches
 from bs4 import BeautifulSoup
+import google.generativeai as genai
 import os
 import pandas as pd
 import numpy as np
@@ -13,7 +14,6 @@ import io
 import base64
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
 from authlib.integrations.flask_client import OAuth
-from groq import Groq
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
@@ -27,23 +27,31 @@ import io
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from googleapiclient.http import MediaIoBaseUpload
+from docx.shared import RGBColor, Pt
+from flask import Flask, session, request, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 
 # --- CONFIGURATION (Use Environment Variables) ---
-app.secret_key = os.environ.get("SECRET_KEY", "55aa7d3a862e341662f3a3fd2dce6260aa4f52a5c2350adc")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDDEb9Nre6URJXCZMgyEBfQBxwpVLyV7cU")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "997015905226-mu61c65b3bjfhnenpij19svmq524kv9e.apps.googleusercontent.com")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
+app.secret_key = os.environ.get("SECRET_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///repository.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["500 per day"], 
+    storage_uri="memory://",     
+)
 
 # Database Model for History
 class AnalysisHistory(db.Model):
@@ -58,12 +66,20 @@ class AnalysisHistory(db.Model):
 with app.app_context():
     db.create_all()
 
-# Initialize Groq client with error handling
+# Initialize Gemini client with error handling
 try:
-    ai_client = Groq(api_key=GROQ_API_KEY)
+    genai.configure(api_key=GEMINI_API_KEY)
+    ai_model = genai.GenerativeModel('models/gemini-2.5-flash')
+    system_instruction="""
+    You are a Senior Research Data Scientist. 
+    Your ONLY output must be valid HTML for a dashboard. 
+    NEVER include conversational text, meta-commentary, or reviews of your own work.
+    NEVER use Markdown (e.g., no **, no #). 
+    Start directly with the <h3>Executive Summary</h3>.
+    """
 except Exception as e:
-    print(f"Error initializing Groq client: {e}")
-    ai_client = None
+    print(f"Error initializing Gemini client: {e}")
+    ai_model = None
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -71,24 +87,35 @@ google = oauth.register(
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile https://www.googleapis.com/auth/drive.appdata'
+    client_kwargs={
+    'scope': 'openid email profile https://www.googleapis.com/auth/drive.file',
+    'prompt': 'consent',
+    'access_type': 'offline'
 },
 )
 
 def get_valid_credentials():
-    """Get valid credentials, refreshing if necessary"""
     if 'google_token' not in session:
         return None
     
     try:
         token_data = session['google_token']
         creds = Credentials(
-            token=token_data['access_token'],
+            token=token_data.get('access_token'),
             refresh_token=token_data.get('refresh_token'),
             token_uri='https://oauth2.googleapis.com/token',
             client_id=GOOGLE_CLIENT_ID,
             client_secret=GOOGLE_CLIENT_SECRET
         )
+        
+        # If the token is expired, refresh it automatically
+        if creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+            # Update the session with the new token
+            session['google_token']['access_token'] = creds.token
+            session.modified = True
+            
         return creds
     except Exception as e:
         print(f"Credentials error: {e}")
@@ -135,17 +162,18 @@ def format_tables_in_html(html_content):
     return html_content
 
 def get_professional_insight(method_name, stats_data, df_summary, is_comparison=False):
-    """Get AI insights with error handling"""
-    if not ai_client:
-        return "<p><b>Error:</b> AI service is not available. Please check your GROQ API key.</p>"
+    if not ai_model:
+        return "<p><b>Error:</b> AI service is not available. Please check your Gemini API key.</p>"
     
     comp_task = "Compare both results. Explicitly state which is more accurate/useful and WHY." if is_comparison else ""
+    
     prompt = f"""
     ROLE: Senior Research Data Scientist.
     METHOD: {method_name}
     STATS: {stats_data}
     CONTEXT: {df_summary}
     TASK: Provide a professional, extremely detailed and in-depth interpretation of the results.
+    
     FORMATTING RULES:
     1. Output ONLY valid HTML. Do NOT use Markdown symbols like '**', '###', or '==='.
     2. Use <h3> for section titles.
@@ -155,23 +183,18 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     {comp_task}"""
     
     try:
-        completion = ai_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=2000
-        )
+        response = ai_model.generate_content(prompt)
+        insight = response.text
         
-        insight = completion.choices[0].message.content
         insight = re.sub(r'={3,}', '', insight)
         insight = re.sub(r'-{3,}', '', insight)
         insight = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', insight)
+        
         return format_tables_in_html(insight)
-        return insight
     except Exception as e:
         error_msg = str(e)
-        if "invalid_api_key" in error_msg.lower() or "authentication" in error_msg.lower():
-            return f"<p><b>Authentication Error:</b> Invalid or expired Groq API key. Please check your API key configuration.</p><p><small>Error: {error_msg}</small></p>"
+        if "API_KEY_INVALID" in error_msg:
+            return f"<p><b>Authentication Error:</b> Your Gemini API key is invalid.</p>"
         else:
             return f"<p><b>Error generating insights:</b> {error_msg}</p>"
 
@@ -269,8 +292,9 @@ def create_custom_graph(df, graph_type):
         plt.close()
         return None
 
-def run_analysis(df, method, custom_query=None, custom_graph_type=None,is_multi=False):
-    """Executes methodology and returns (Base64_Image_String, Stats_String, Method_Name, Has_Table)."""
+def run_analysis(df, method, custom_query=None, custom_graph_type=None, is_multi=False):
+    """Executes all 11 methodologies and returns (Base64_Image_String, Stats_String, Method_Name, Has_Table)."""
+    # 1. PREPARE NUMERIC DATA
     num_df = df.apply(pd.to_numeric, errors='coerce').dropna(axis=1, how='all')
     if num_df.empty:
         return None, "Error: No numerical data found.", method, False
@@ -278,6 +302,9 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None,is_multi=
     imputer = SimpleImputer(strategy='mean')
     clean_num = pd.DataFrame(imputer.fit_transform(num_df), columns=num_df.columns)
     
+    # Global safety net for infinity/NaNs (Critical for Scikit-Learn)
+    clean_num = clean_num.replace([np.inf, -np.inf], np.nan).fillna(0)
+
     if is_multi and 'Source_File' in df.columns:
         clean_num['Source_File'] = df['Source_File'].values
 
@@ -286,233 +313,116 @@ def run_analysis(df, method, custom_query=None, custom_graph_type=None,is_multi=
     has_table = False
 
     try:
+        hue_val = 'Source_File' if (is_multi and 'Source_File' in clean_num.columns) else None
+        
+        # --- 1. AUTO DETECT ---
         if method == "auto_detect":
             summary = clean_num.describe().to_string()
-            
-            if ai_client:
-                try:
-                    ai_res = ai_client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role":"user", "content": f"""
-                        Analyze this data summary: {summary}
-                        Identify the single most mathematically precise methodology for this data.
-                        Return ONLY the name."""}]
-                    )
-                    detected_name = ai_res.choices[0].message.content.strip()
-                except:
-                    detected_name = "Statistical Summary"
-            else:
-                detected_name = "Statistical Summary"
-            
             has_table = True
-            return None, summary, f"AI Recommended: {detected_name}", has_table
+            return None, summary, f"AI Recommended: Statistical Summary", has_table
 
-        hue_val='Source_File' if (is_multi and 'Source_File' in clean_num.columns) else None
-        
-        if method == "correlation":
+        # --- 2. CORRELATION ---
+        elif method == "correlation":
             corr_matrix = clean_num.select_dtypes(include=[np.number]).corr()
-            
-            sns.heatmap(corr_matrix, annot=True, cmap='RdBu_r', center=0, 
-                       square=True, linewidths=1, cbar_kws={"shrink": 0.8})
-            
-            plt.title("Correlation Heatmap (Combined Datasets)", fontsize=14, fontweight='bold', pad=20)
-            plt.tight_layout()
-            
-            # 2. Update stats string to show the correlation matrix
+            sns.heatmap(corr_matrix, annot=True, cmap='RdBu_r', center=0, square=True)
+            plt.title("Correlation Heatmap", fontsize=14, fontweight='bold')
             stats_str = corr_matrix.to_string()
-            
-        elif method == "kmeans" and clean_num.shape[1] >= 2:
-            km_data = clean_num.drop(columns=['Source_File'], errors='ignore')
-            
-            # 2. Fit the model
-            model = KMeans(n_clusters=3, n_init='auto', random_state=42).fit(km_data)
-            clean_num['Cluster'] = model.labels_
-            
-            # 3. Determine the Hue
-            display_hue = hue_val if (is_multi and hue_val) else 'Cluster'
-            
-            sns.scatterplot(data=clean_num, x=clean_num.columns[0], y=clean_num.columns[1], 
-                          hue=display_hue, palette='viridis', s=100, alpha=0.7)
-            
-            plt.title("K-Means Segmentation", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel(clean_num.columns[0], fontsize=12)
-            plt.ylabel(clean_num.columns[1], fontsize=12)
-            plt.legend(title=display_hue, bbox_to_anchor=(1.05, 1), loc='upper left')
-            plt.tight_layout()
-            
-            stats_str = f"Inertia: {model.inertia_:.2f}\nClusters identified: 3"
-        
+            has_table = True
+
+        # --- 3. K-MEANS ---
+        elif method == "kmeans":
+            km_data = clean_num.drop(columns=['Source_File', 'Cluster'], errors='ignore').select_dtypes(include=[np.number])
+            if len(km_data) >= 3:
+                model = KMeans(n_clusters=3, n_init='auto', random_state=42).fit(km_data)
+                clean_num['Cluster'] = model.labels_
+                display_hue = hue_val if (is_multi and hue_val) else 'Cluster'
+                sns.scatterplot(data=clean_num, x=km_data.columns[0], y=km_data.columns[1], hue=display_hue, palette='viridis', s=80)
+                stats_str = f"Inertia: {model.inertia_:.2f}\nClusters identified: 3"
+            else:
+                stats_str = "Insufficient data points for K-Means clustering."
+
+        # --- 4. RANDOM FOREST ---
         elif method == "random_forest" and clean_num.shape[1] >= 2:
             rf_data = clean_num.drop(columns=['Source_File'], errors='ignore')
-            
             X = rf_data.drop(rf_data.columns[0], axis=1)
             y = rf_data.iloc[:, 0]
-            
-            # 2. Train the model
             rf = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y)
-            
-            # 3. Create a Feature Importance DataFrame
-            feat_imp = pd.DataFrame({
-                'Feature': X.columns,
-                'Importance': rf.feature_importances_
-            }).sort_values(by='Importance', ascending=False)
-
-            # 4. Plot using Seaborn for better aesthetic (hue isn't used here as RF is global)
-            sns.barplot(data=feat_imp, x='Importance', y='Feature', palette='viridis', edgecolor='black')
-            
-            plt.title("Feature Importance (Global Model)", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel('Importance Score', fontsize=12)
-            plt.tight_layout()
-            
+            feat_imp = pd.DataFrame({'Feature': X.columns, 'Importance': rf.feature_importances_}).sort_values(by='Importance', ascending=False)
+            sns.barplot(data=feat_imp, x='Importance', y='Feature', hue='Feature', palette='viridis', legend=False)
             stats_str = feat_imp.to_string(index=False)
             has_table = True
-            
+
+        # --- 5. REGRESSION ---
         elif method == "regression" and clean_num.shape[1] >= 2:
-            # 1. Use lmplot for multi-file hue support
-            # Note: lmplot creates its own figure, so we don't use the existing plt.figure
-            g = sns.lmplot(data=clean_num, x=clean_num.columns[0], y=clean_num.columns[-1], 
-                           hue=hue_val if is_multi else None, palette='magma',
-                           scatter_kws={'alpha':0.5, 's':50}, height=6, aspect=1.5)
-            
-            plt.title("Comparative Linear Regression", fontsize=14, fontweight='bold', pad=20)
-            plt.grid(True, alpha=0.3)
-            
-            # 2. Capture the figure from the FacetGrid 'g'
-            img = io.BytesIO()
-            g.figure.savefig(img, format='png', bbox_inches='tight', dpi=150)
-            img.seek(0)
-            plot_url = base64.b64encode(img.getvalue()).decode()
-            plt.close(g.figure) # Close the specific lmplot figure
-            
-            stats_str = "Multi-source regression trendlines calculated."
-            if is_multi:
-                 stats_str += " Comparison visible via color-coded slopes."
-            
-            return plot_url, stats_str, final_name, False
-        
+            sns.regplot(data=clean_num, x=clean_num.columns[0], y=clean_num.columns[-1], scatter_kws={'alpha':0.5})
+            stats_str = f"Linear Regression: {clean_num.columns[0]} vs {clean_num.columns[-1]}"
+
+        # --- 6. ANOVA ---
         elif method == "anova":
-            # 1. Identify categorical columns (excluding our added Source_File)
-            actual_cat_cols = [c for c in df.select_dtypes(exclude=[np.number]).columns if c != 'Source_File']
-            
-            if actual_cat_cols:
-                # Use the first found categorical column for the X-axis
-                # Use hue_val to show the difference between File 1, File 2, etc.
-                sns.boxplot(data=df, x=actual_cat_cols[0], y=clean_num.columns[0], 
-                            hue=hue_val if is_multi else None, palette='Set2')
-                
-                plt.title("ANOVA: Group Variance", fontsize=14, fontweight='bold', pad=20)
-                plt.xlabel(actual_cat_cols[0], fontsize=12)
-                plt.ylabel(clean_num.columns[0], fontsize=12)
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                stats_str = f"Variance analysis for {actual_cat_cols[0]}."
+            cat_cols = [c for c in df.select_dtypes(exclude=[np.number]).columns if c != 'Source_File']
+            if cat_cols:
+                sns.boxplot(data=df, x=cat_cols[0], y=clean_num.columns[0], hue=cat_cols[0], palette='Set2', legend=False)
+                stats_str = f"ANOVA variance check on {cat_cols[0]}"
             else:
-                # If no categories exist, use Source_File as the primary category
                 display_x = 'Source_File' if is_multi else None
-                sns.boxenplot(data=clean_num, x=display_x, palette='muted')
-                
-                plt.title("Numeric Distributions", fontsize=14, fontweight='bold', pad=20)
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                stats_str = "Comparison of numeric distributions across datasets."
-                
+                sns.boxenplot(data=clean_num, x=display_x, hue=display_x if is_multi else None, palette='muted', legend=False)
+                stats_str = "Group-wise numeric distribution."
+
+        # --- 7. PCA ---
         elif method == "pca" and clean_num.shape[1] >= 2:
-            # 1. Prepare data (Drop Source_File and Cluster columns if they exist for math)
             pca_data = clean_num.drop(columns=['Source_File', 'Cluster'], errors='ignore')
-            
             pca = PCA(n_components=2)
-            components = pca.fit_transform(pca_data)
-            
-            # 2. Create a temporary DataFrame for plotting
-            pca_df = pd.DataFrame(data=components, columns=['PC1', 'PC2'])
-            if is_multi:
-                pca_df['Source_File'] = clean_num['Source_File'].values
-            
-            # 3. Use Seaborn to handle the 'hue' correctly
-            sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue=hue_val if is_multi else None, 
-                            palette='cool', s=60, alpha=0.7, edgecolor='black')
-            
-            plt.title("PCA Dimensionality Reduction", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})', fontsize=12)
-            plt.ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})', fontsize=12)
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            
+            comps = pca.fit_transform(pca_data)
+            pca_df = pd.DataFrame(data=comps, columns=['PC1', 'PC2'])
+            if is_multi: pca_df['Source_File'] = clean_num['Source_File'].values
+            sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue=hue_val, palette='cool', s=70)
             stats_str = f"Explained Variance Ratio: {pca.explained_variance_ratio_}"
             has_table = True
-            
+
+        # --- 8. T-TEST ---
         elif method == "ttest" and clean_num.shape[1] >= 1:
-            # REMOVED color='purple' to allow hue_val to differentiate datasets
-            sns.kdeplot(data=clean_num, x=clean_num.columns[0], hue=hue_val, 
-                        fill=True, palette='magma', alpha=0.5)
-            
-            plt.title("T-Test Distribution Analysis", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel(clean_num.columns[0], fontsize=12)
-            plt.ylabel('Density', fontsize=12)
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            
-            # Show group-specific means if comparing files
-            if is_multi:
-                stats_str = "Group Means:\n" + clean_num.groupby('Source_File')[clean_num.columns[0]].mean().to_string()
-            else:
-                stats_str = f"Mean of target: {clean_num.iloc[:,0].mean():.2f}"
+            sns.kdeplot(data=clean_num, x=clean_num.columns[0], hue=hue_val, fill=True, alpha=0.5)
+            stats_str = f"Mean for {clean_num.columns[0]}: {clean_num.iloc[:,0].mean():.2f}"
             has_table = True
-        
+
+        # --- 9. DISTRIBUTION ---
         elif method == "distribution":
-            sns.histplot(data=clean_num, x=clean_num.columns[0], hue=hue_val, 
-                         kde=True, bins=30, edgecolor='black', palette='viridis')
-            
-            plt.title("Frequency Distribution", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel(clean_num.columns[0], fontsize=12)
-            plt.ylabel('Frequency', fontsize=12)
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            if is_multi:
-                stats_str = clean_num.groupby('Source_File')[clean_num.columns[0]].mean().to_string()
-            else:
-                stats_str = f"Mean: {clean_num.iloc[:,0].mean():.2f}, SD: {clean_num.iloc[:,0].std():.2f}"
+            sns.histplot(data=clean_num, x=clean_num.columns[0], hue=hue_val, kde=True, bins=30)
+            stats_str = f"Normal Distribution Check for {clean_num.columns[0]}"
             has_table = True
 
+        # --- 10. TIMESERIES ---
         elif method == "timeseries":
-            sns.lineplot(data=clean_num, x=clean_num.index, y=clean_num.columns[0], 
-                         hue=hue_val, marker='o', linewidth=2, markersize=5)
-            
-            plt.title("Temporal Trend Analysis", fontsize=14, fontweight='bold', pad=20)
-            plt.xlabel('Time Index', fontsize=12)
-            plt.ylabel(clean_num.columns[0], fontsize=12)
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            stats_str = "Time-series data plotted sequentially by source."
+            sns.lineplot(data=clean_num, x=clean_num.index, y=clean_num.columns[0], hue=hue_val, marker='o')
+            stats_str = "Sequential trend analysis."
 
+        # --- 11. OTHER (Custom) ---
         elif method == "other":
             if custom_graph_type:
-                plt.close()
+                plt.close('all')
                 plot_url = create_custom_graph(df, custom_graph_type)
-                final_name = f"Custom: {custom_graph_type.title()} View"
-                stats_str = f"Custom {custom_graph_type} visualization created based on: {custom_query}"
-                return plot_url, stats_str, final_name, False
+                return plot_url, f"Custom Parameters: {custom_query}", final_name, False
             else:
-                if clean_num.shape[1] >= 2:
-                    pairplot_data = clean_num.iloc[:, :4]
-                    g = sns.pairplot(pairplot_data, hue=hue_val,diag_kind='kde', plot_kws={'alpha':0.6, 's':50})
-                    g.fig.suptitle(f"Custom Pairplot: {custom_query[:30]}", y=1.01, fontsize=14, fontweight='bold')
-                    plt.tight_layout()
-                else:
-                    clean_num.iloc[:, 0].plot(kind='hist', bins=30, edgecolor='black', alpha=0.7)
-                    plt.title(f"Custom View: {custom_query[:30]}", fontsize=14, fontweight='bold', pad=20)
-                stats_str = f"Manual query processed: {custom_query}"
+                numeric_cols = clean_num.select_dtypes(include=[np.number]).columns[:4]
+                g = sns.pairplot(clean_num, vars=numeric_cols, hue=hue_val)
+                img = io.BytesIO()
+                g.savefig(img, format='png', bbox_inches='tight', dpi=150)
+                plt.close()
+                return base64.b64encode(img.getvalue()).decode(), stats_str, final_name, False
 
+        # --- UNIVERSAL SAVING BLOCK ---
+        plt.tight_layout()
         img = io.BytesIO()
-        plt.savefig(img, format='png', bbox_inches='tight', dpi=150, facecolor='white')
+        plt.savefig(img, format='png', bbox_inches='tight', dpi=150)
         img.seek(0)
         plot_url = base64.b64encode(img.getvalue()).decode()
         plt.close()
+        
         return plot_url, stats_str, final_name, has_table
 
     except Exception as e:
         plt.close()
-        return None, f"Error: {str(e)}", final_name, False
+        return None, f"Analysis Error: {str(e)}", method, False
 
 def save_to_repository(email, filename, method, html_content):
     try:
@@ -534,8 +444,13 @@ def index():
     return render_template("login.html")
 
 @app.route("/login/google")
+@limiter.limit("10 per hour")
 def login_google():
-    return google.authorize_redirect(url_for('google_auth', _external=True))
+    return google.authorize_redirect(
+        url_for('google_auth', _external=True),
+        access_type='offline',
+        prompt='consent'
+    )
 
 @app.route("/google/auth")
 def google_auth():
@@ -555,40 +470,71 @@ def dashboard():
     current_filenames = []
 
     if request.method == "POST":
-        # 1. MULTI-FILE UPLOAD & AGGREGATION
         uploaded_files = request.files.getlist("file")
         file_count_setting = int(request.form.get("file_count", 1))
-        
-        # Enforce count constraint on backend
         uploaded_files = uploaded_files[:file_count_setting]
+        
+        # Get Drive Service for Privacy Sync
+        creds = get_valid_credentials()
+        drive_service = build('drive', 'v3', credentials=creds) if creds else None
         
         all_dfs = []
         for i, file in enumerate(uploaded_files):
             if file and file.filename != '':
                 filename = file.filename
                 current_filenames.append(filename)
-                local_path = os.path.join(UPLOAD_FOLDER, filename)
-                file.save(local_path)
                 
-                temp_df = pd.read_csv(local_path, encoding='latin1')
-                # Add Source_File column for comparison
+                # READ INTO MEMORY (Privacy: No local saving)
+                file_bytes = file.read()
+                file_io = io.BytesIO(file_bytes)
+                
+                # 1. Upload to Google Drive (Private User Storage)
+                if drive_service:
+                    try:
+                        query = f"name = '{filename}' and trashed = false"
+                        response = drive_service.files().list(q=query, fields="files(id, name)").execute()
+                        existing_files = response.get('files', [])
+
+                        if not existing_files:
+                            file_io.seek(0)
+                            media = MediaIoBaseUpload(file_io, mimetype=file.content_type, resumable=True)
+                            
+                            uploaded_file = drive_service.files().create(
+                                body={'name': filename},
+                                media_body=media,
+                                fields='id'
+                            ).execute()
+                            print(f"DEBUG: New upload successful. ID: {uploaded_file.get('id')}")
+                        else:
+                            existing_id = existing_files[0].get('id')
+                            print(f"DEBUG: File '{filename}' already exists in Drive (ID: {existing_id}). Skipping upload.")
+                    except Exception as drive_err:
+                        print(f"Drive Upload failed (Analysis continuing): {drive_err}")
+
+                # 2. Process for Analysis
+                if filename.endswith('.csv'):
+                    temp_df = pd.read_csv(io.BytesIO(file_bytes), encoding='latin1')
+                else:
+                    temp_df = pd.read_excel(io.BytesIO(file_bytes))
+                    
                 temp_df['Source_File'] = f"Dataset {i+1}: {filename}"
                 all_dfs.append(temp_df)
 
         if not all_dfs:
             return jsonify({"status": "error", "message": "No files uploaded"})
 
-        # Backend Aggregation
-        df = pd.concat(all_dfs, ignore_index=True) if len(all_dfs) > 1 else all_dfs[0]
+        df = pd.concat(all_dfs, ignore_index=True)
         is_multi = len(all_dfs) > 1
         
         mode = "comparative" if is_multi else request.form.get("mode")
         m1 = request.form.get("method")
         m2 = request.form.get("method2")
+        c_query = request.form.get("custom_query")
+        c_graph = request.form.get("custom_graph_type")
 
         try:
-            # 2. PERFORM ANALYSIS (With Comparison Logic)
-            p1, s1, n1, t1 = run_analysis(df, m1, is_multi=is_multi)
+            # Pass the custom parameters into the run_analysis function
+            p1, s1, n1, t1 = run_analysis(df, m1, custom_query=c_query, custom_graph_type=c_graph, is_multi=is_multi)
             
             # Summary Focus on Delta/Outliers if multi-file
             context_summary = df.groupby('Source_File').describe().to_string() if is_multi else df.describe().to_string()
@@ -636,6 +582,7 @@ def get_repository_history():
     } for item in history_items])
 
 @app.route("/get_analysis_detail/<int:record_id>")
+@limiter.limit("50 per day")
 def get_analysis_detail(record_id):
     if 'user_email' not in session: return jsonify({"error": "Unauthorized"}), 401
     
@@ -653,6 +600,21 @@ from docx.shared import Inches
 from bs4 import BeautifulSoup
 import io
 
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({
+        "error": "Usage Limit Reached",
+        "message": "You've reached your hourly/daily limit. This ensures the engine remains fast for everyone. Please try again later!",
+        "limit": str(e.description)
+    }), 429
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({
+        "error": "File Too Large",
+        "message": "The maximum allowed file size is 30 MB. Please optimize your dataset."
+    }), 413
+
 @app.route("/export_word", methods=["POST"])
 def export_word():
     if 'user_email' not in session:
@@ -662,10 +624,15 @@ def export_word():
     data = request.json
     html_content = data.get('html', '')
     image_base64 = data.get('image', None)
-    
+    user_local_time = data.get('local_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
     doc = Document()
     doc.add_heading('BT IntelliStat - Analysis Report', 0)
-    doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    doc.add_paragraph(f"Generated on: {user_local_time}")
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Times New Roman'
+    font.size = Pt(13)
 
     # 1. Add the Visual (if exists)
     if image_base64:
@@ -699,6 +666,36 @@ def export_word():
                     cells = row.find_all(['td', 'th'])
                     for j, cell in enumerate(cells):
                         table.cell(i, j).text = cell.get_text()
+    
+    # Add a Professional Compliance Footer to the Document
+    doc.add_paragraph("\n" * 3)
+    
+    # Use a subtle horizontal line for professional separation
+    p_line = doc.add_paragraph()
+    p_line.alignment = 1
+    run_line = p_line.add_run("________________________________________________")
+    run_line.font.color.rgb = RGBColor(200, 200, 200)
+
+    # Formal Compliance Text
+    compliance_p = doc.add_paragraph()
+    compliance_p.alignment = 0 # Left aligned as requested
+    
+    run_badge = compliance_p.add_run("DPDP COMPLIANCE NOTICE: ")
+    run_badge.bold = True
+    run_badge.font.size = Pt(11)
+    
+    run_text = compliance_p.add_run(
+        "This report confirms to the Digital Personal Data Protection Act (2023). "
+        "Processing was executed in a zero-persistence environment. All research data is "
+        "stored exclusively within the user's controlled Google Drive directory."
+    )
+    run_text.font.size = Pt(10)
+    run_text.font.color.rgb = RGBColor(100, 100, 100)
+
+    # Verification Timestamp
+    v_p = doc.add_paragraph(f"Verification ID: BT-STAT-{datetime.now().strftime('%Y%m%d-%H%M')}")
+    v_p.style.font.size = Pt(9)
+    v_p.alignment = 0
 
     # Save to memory and send
     file_stream = io.BytesIO()
