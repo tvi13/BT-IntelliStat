@@ -1,7 +1,7 @@
 from docx import Document
 from docx.shared import Inches
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
 import os
 import pandas as pd
 import numpy as np
@@ -68,8 +68,8 @@ with app.app_context():
 
 # Initialize Gemini client with error handling
 try:
-    genai.configure(api_key=GEMINI_API_KEY)
-    ai_model = genai.GenerativeModel('models/gemini-2.5-flash')
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    ai_model = "gemini-2.5-flash"
     system_instruction="""
     You are a Senior Research Data Scientist. 
     Your ONLY output must be valid HTML for a dashboard. 
@@ -79,7 +79,7 @@ try:
     """
 except Exception as e:
     print(f"Error initializing Gemini client: {e}")
-    ai_model = None
+    client = None
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -162,7 +162,7 @@ def format_tables_in_html(html_content):
     return html_content
 
 def get_professional_insight(method_name, stats_data, df_summary, is_comparison=False):
-    if not ai_model:
+    if not client:
         return "<p><b>Error:</b> AI service is not available. Please check your Gemini API key.</p>"
     
     comp_task = "Compare both results. Explicitly state which is more accurate/useful and WHY." if is_comparison else ""
@@ -183,7 +183,15 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     {comp_task}"""
     
     try:
-        response = ai_model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=ai_model,
+            contents=prompt,
+            config={
+                "system_instruction": system_instruction,
+                "temperature": 0.1
+            }
+        )
+
         insight = response.text
         
         insight = re.sub(r'={3,}', '', insight)
