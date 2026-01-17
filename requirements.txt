@@ -1,5 +1,7 @@
 flask
 Flask-SQLAlchemy
+Flask-Limiter
+google-genai>=0.4.0
 beautifulsoup4
 gunicorn
 pandas
@@ -10,7 +12,6 @@ scipy
 scikit-learn
 authlib
 requests
-groq
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
