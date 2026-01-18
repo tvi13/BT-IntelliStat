@@ -187,6 +187,7 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     stats_data = stats_data[:4000]
 
     try:
+        try:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
