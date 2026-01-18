@@ -59,7 +59,7 @@ class AnalysisHistory(db.Model):
     user_email = db.Column(db.String(120), nullable=False)
     filename = db.Column(db.String(200))
     method = db.Column(db.String(100))
-    result_html = db.Column(db.Text)  # Stores the full rendered HTML results
+    result_html = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 # Initialize the database file
@@ -172,7 +172,7 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     METHOD: {method_name}
     STATS: {stats_data}
     CONTEXT: {df_summary}
-    TASK: Provide a professional, extremely detailed and in-depth interpretation of the results.
+    TASK: Provide a concise but rigorous professional interpretation. Limit output to 6-8 sections.
     
     FORMATTING RULES:
     1. Output ONLY valid HTML. Do NOT use Markdown symbols like '**', '###', or '==='.
@@ -182,6 +182,10 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     5. Ensure all text is wrapped in <p> tags.
     {comp_task}"""
     
+    MAX_CONTEXT_CHARS = 8000
+    df_summary = df_summary[:MAX_CONTEXT_CHARS]
+    stats_data = stats_data[:4000]
+
     try:
         response = client.models.generate_content(
             model=ai_model,
@@ -545,7 +549,13 @@ def dashboard():
             p1, s1, n1, t1 = run_analysis(df, m1, custom_query=c_query, custom_graph_type=c_graph, is_multi=is_multi)
             
             # Summary Focus on Delta/Outliers if multi-file
-            context_summary = df.groupby('Source_File').describe().to_string() if is_multi else df.describe().to_string()
+            context_summary = {}
+            for src in df['Source_File'].unique():
+                subset = df[df['Source_File'] == src]
+                context_summary[src] = subset.describe().iloc[:3].to_dict()
+                del subset
+            
+            context_summary = json.dumps(context_summary)[:8000]
             
             i1 = get_professional_insight(n1, s1, context_summary, is_comparison=is_multi)
             results.append({'plot': p1, 'insight': i1, 'name': n1, 'has_table': t1})
@@ -572,6 +582,22 @@ def dashboard():
                 "filename": ", ".join(current_filenames),
                 "html": render_template("dashboard_partial.html", results=results, mode=mode)
             })
+
+    try:
+        del all_dfs
+        del df
+        del context_summary
+        del results
+        del p1, s1, n1, t1
+        if 'p2' in locals(): del p2
+        if 's2' in locals(): del s2
+        if 'n2' in locals(): del n2
+        if 't2' in locals(): del t2
+    except:
+        pass
+
+    import gc
+    gc.collect()
 
     return render_template("dashboard.html", user=session.get('user_name'))
 
