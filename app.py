@@ -69,7 +69,7 @@ with app.app_context():
 # Initialize Gemini client with error handling
 try:
     client = genai.Client(api_key=GEMINI_API_KEY)
-    ai_model = "gemini-2.5-flash"
+    ai_model = "gemini-2.5-flash-lite"
     system_instruction="""
     You are a Senior Research Data Scientist. 
     Your ONLY output must be valid HTML for a dashboard. 
