@@ -739,7 +739,7 @@ def export_word():
     return send_file(
         file_stream,
         as_attachment=True,
-        download_name="BT_IntelliStat_Report.docx",
+        download_name="Report.docx",
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
