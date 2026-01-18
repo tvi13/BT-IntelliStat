@@ -40,7 +40,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///repository.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////var/lib/data/repository.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -544,9 +544,17 @@ def dashboard():
         c_query = request.form.get("custom_query")
         c_graph = request.form.get("custom_graph_type")
 
+        if len(df) > 10000:
+            df = df.sample(n=10000, random_state=42)
+        
         try:
             # Pass the custom parameters into the run_analysis function
             p1, s1, n1, t1 = run_analysis(df, m1, custom_query=c_query, custom_graph_type=c_graph, is_multi=is_multi)
+            
+            plt.clf()      
+            plt.close('all')   
+            import gc
+            gc.collect()
             
             # Summary Focus on Delta/Outliers if multi-file
             context_summary = {}
