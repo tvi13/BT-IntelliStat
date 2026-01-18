@@ -1,42 +1,62 @@
-📊 BT IntelliStat
-Comparative Multi-Dataset Research & AI-Driven Statistical Analysis
+📊 BT IntelliStat v1.0
+Resilient Multi-Dataset Research & AI-Driven Statistical Analysis
 
-BT IntelliStat is a professional-grade analytical platform designed for researchers who need to compare datasets and extract cross-functional insights. Unlike standard tools, IntelliStat identifies deltas, trends, and correlations across multiple files simultaneously, combining the precision of the Python Scientific Stack with the reasoning power of Llama-3.3.
+BT IntelliStat is an analytical platform built for researchers to synthesize complex datasets through high-fidelity statistical modeling and multi-tier AI reasoning.
 
-🚀 Advanced Features
-Multi-Dataset Comparative Engine: Upload and compare up to 3 datasets simultaneously. The engine automatically merges data and tracks source-file lineage for group-based variance analysis.
+🚀 Version 1.0
+A robust web service capable of handling real-world data constraints:
 
-Fidelity-First AI Auto-Detect: An intelligent strategy layer that analyzes data architecture to recommend the optimal statistical path while preventing "visual hallucination."
+Triple-Tier AI Failover (The "Waterfall" Logic): Engineered a resilient inference system that prioritizes Gemini 2.5 Flash, automatically fails over to Gemini 2.5 Flash-Lite, and utilizes Groq (Llama 3.3 70B) as a tertiary high-speed backup.
 
-Color-Coded Comparative Visuals: Refactored Seaborn visualizations (PCA, Regression, K-Means) using dynamic hue mapping to visually distinguish between datasets.
+High-Capacity Data Handling: Integrated a Sampling Guard and manual Garbage Collection routine to process datasets exceeding 10,000 rows, preventing RAM-related crashes on cloud infrastructure.
 
-Professional .docx Export: A custom server-side document generator that exports high-fidelity research reports, including native Word tables and embedded plots—optimized for academic submission.
+Persistent Research History: Configured a Persistent SSD Volume mapping to ensure analysis history and user databases survive application redeployments.
 
-Secure Cloud Lifecycle: Full Google OAuth 2.0 integration with persistent analysis history stored in the secure Google Drive appDataFolder.
+Optimized Server Performance: Deployed with a custom Gunicorn configuration using threaded workers timeout to support intensive comparative computations.
 
+✨ Core Features
+Comparative Engine: Compare up to 3 datasets with automatic source-file lineage tracking for variance analysis.
 
-🛠️ Tech Stack & Architecture
-Logic: Python 3.10+ / Flask
+Auto-Detect Strategy: Intelligent layer that recommends the optimal statistical path (PCA, Regression, etc.) based on data architecture.
 
-AI Reasoning: Groq Cloud (Llama-3.3-70b-versatile)
+High-Fidelity Visuals: Dynamic Seaborn and Matplotlib plots refactored for multi-hue dataset distinction.
 
-Mathematical Processing: Pandas, NumPy, Scikit-Learn
+Professional Export: Server-side document generation into .docx format, complete with native tables and embedded plots.
 
-Data Visualization: Matplotlib & Seaborn (Refactored for Multi-Hue)
+Secure Lifecycle: Full Google OAuth 2.0 integration.
 
-Document Engineering: python-docx & BeautifulSoup4
+📖 How It Works
+BT IntelliStat is designed for a streamlined research workflow:
 
-Storage & Auth: Google OAuth 2.0 / Google Drive API
+Select Volume: Choose to analyze a single file or perform a comparative synthesis of up to 3 datasets.
 
-📐 Academic Integrity Guardrails
-To ensure the highest research standards, BT IntelliStat implements:
+Upload & Validate: Drop your .csv or .xlsx files into the secure upload zone. The system automatically verifies headers and cleans empty rows for mathematical consistency.
 
-Strict Typing: Non-numeric data is intelligently handled or excluded from mathematical models to prevent TypeError crashes.
+Configure Methodology: Select between AI Auto-Detect (which chooses the best statistical path) or manually select modules like K-Means, Linear Regression, or PCA.
 
-Visual Restraint: Strategic decisions (Auto-Detect) prioritize methodological reasoning over visuals to ensure users focus on data strategy before visualization.
+Execute & Synthesize: The engine processes the data through the Python scientific stack and triggers the Triple-Tier AI Failover to generate qualitative insights.
 
-Source Attribution: Every merged row is tagged with a Source_File identifier to maintain data provenance during complex merges.
+Export Results: Download a high-fidelity .docx report containing the executive summary, data tables, and high-resolution visualizations formatted for academic submission.
+
+🛠️ Tech Stack
+Backend: Python 3.10+ / Flask / Gunicorn
+
+AI Ecosystem: Google Gemini 2.5 (Flash & Lite) + Groq (Llama 3.3)
+
+Scientific Stack: Pandas, NumPy, Scikit-Learn
+
+Visualization: Matplotlib & Seaborn
+
+Infrastructure: Render with Persistent Volume & Custom DNS
+
+📐 Implementation Logic
+To maintain academic and technical integrity, the system implements:
+
+Memory Management: Strategic row-sampling for massive files to maintain low-latency response times.
+
+Source Attribution: Every merged row maintains a Source_File identifier to ensure data provenance.
+
+Failover Transparency: Real-time logging of model failovers to monitor API health.
 
 🛡️ License & Copyright
-
-© 2026 BT IntelliStat. Developed for Senior Research and Data Science Applications.
+© 2026 BT IntelliStat. Developed by Tvisha Majithia for Senior Research and Data Science Applications.
