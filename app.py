@@ -195,14 +195,15 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
                 "temperature": 0.1
             }
         )
-
-        insight = response.text
-        
+        insight = response.text.strip()
+        insight = re.sub(r'^```(?:html|json|markdown)?\n?', '', insight, flags=re.IGNORECASE)
+        insight = re.sub(r'\n?```$', '', insight)
         insight = re.sub(r'={3,}', '', insight)
         insight = re.sub(r'-{3,}', '', insight)
         insight = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', insight)
         
         return format_tables_in_html(insight)
+        
     except Exception as e:
         error_msg = str(e)
         if "API_KEY_INVALID" in error_msg:
