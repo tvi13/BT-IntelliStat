@@ -2,6 +2,7 @@ from docx import Document
 from docx.shared import Inches
 from bs4 import BeautifulSoup
 from google import genai
+from groq import Groq
 import os
 import pandas as pd
 import numpy as np
@@ -39,6 +40,7 @@ app.secret_key = os.environ.get("SECRET_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////var/lib/data/repository.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -66,20 +68,26 @@ class AnalysisHistory(db.Model):
 with app.app_context():
     db.create_all()
 
-# Initialize Gemini client with error handling
+PRIMARY_MODEL = "gemini-2.5-flash"
+BACKUP_MODEL = "gemini-2.5-flash-lite"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+
+system_instruction = """
+You are a Senior Research Data Scientist. 
+Your ONLY output must be valid HTML for a dashboard. 
+NEVER include conversational text, meta-commentary, or reviews of your own work.
+NEVER use Markdown (e.g., no **, no #). 
+Start directly with the <h3>Executive Summary</h3>.
+"""
+
 try:
     client = genai.Client(api_key=GEMINI_API_KEY)
-    ai_model = "gemini-2.5-flash-lite"
-    system_instruction="""
-    You are a Senior Research Data Scientist. 
-    Your ONLY output must be valid HTML for a dashboard. 
-    NEVER include conversational text, meta-commentary, or reviews of your own work.
-    NEVER use Markdown (e.g., no **, no #). 
-    Start directly with the <h3>Executive Summary</h3>.
-    """
+    groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+    
 except Exception as e:
-    print(f"Error initializing Gemini client: {e}")
+    print(f"Error initializing AI clients: {e}")
     client = None
+    groq_client = None
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -188,24 +196,40 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
 
     try:
         try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
+            response_obj = client.models.generate_content(
+                model=PRIMARY_MODEL,
                 contents=prompt,
                 config={"system_instruction": system_instruction, "temperature": 0.1}
             )
+            insight = response_obj.text.strip()
         except Exception as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 print("Quota hit for 2.5 Flash. Failing over to 2.5 Flash-Lite...")
+                try:
+                    response_obj = client.models.generate_content(
+                        model=BACKUP_MODEL,
+                        contents=prompt,
+                        config={"system_instruction": system_instruction, "temperature": 0.1}
+                    )
+                    insight = response_obj.text.strip()
+                except Exception as e_lite:
+                    if "429" in str(e_lite) or "RESOURCE_EXHAUSTED" in str(e_lite):
+                        print("Google exhausted. Failing over to Groq (Llama 3.3)...")
 
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite",
-                    contents=prompt,
-                    config={"system_instruction": system_instruction, "temperature": 0.1}
-                )
+                        groq_res = groq_client.chat.completions.create(
+                            model=GROQ_MODEL,
+                            messages=[
+                                {"role": "system", "content": system_instruction},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.1
+                        )
+                        insight = groq_res.choices[0].message.content.strip()
+                    else:
+                        raise e_lite
             else:
                 raise e
 
-        insight = response.text.strip()
         insight = re.sub(r'^```(?:html|json|markdown)?\n?', '', insight, flags=re.IGNORECASE)
         insight = re.sub(r'\n?```$', '', insight)
         insight = re.sub(r'={3,}', '', insight)
@@ -217,9 +241,9 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     except Exception as e:
         error_msg = str(e)
         if "API_KEY_INVALID" in error_msg:
-            return f"<p><b>Authentication Error:</b> Your Gemini API key is invalid.</p>"
+            return f"<p><b>Authentication Error:</b> Your API key is invalid.</p>"
         else:
-            return f"<p><b>Error generating insights:</b> {error_msg}</p>"
+            return f"<p><b>System Exhausted:</b> All AI tiers failed. {error_msg}</p>"
 
 def create_custom_graph(df, graph_type):
     """Create specific graph types for custom analysis"""
