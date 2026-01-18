@@ -2,6 +2,7 @@ flask
 Flask-SQLAlchemy
 Flask-Limiter
 google-genai>=0.4.0
+groq
 beautifulsoup4
 gunicorn
 pandas
