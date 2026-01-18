@@ -187,14 +187,23 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
     stats_data = stats_data[:4000]
 
     try:
-        response = client.models.generate_content(
-            model=ai_model,
-            contents=prompt,
-            config={
-                "system_instruction": system_instruction,
-                "temperature": 0.1
-            }
-        )
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={"system_instruction": system_instruction, "temperature": 0.1}
+            )
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                print("Quota hit for 2.5 Flash. Failing over to 2.5 Flash-Lite...")
+
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash-lite",
+                    contents=prompt,
+                    config={"system_instruction": system_instruction, "temperature": 0.1}
+                )
+            else:
+                raise e
+
         insight = response.text.strip()
         insight = re.sub(r'^```(?:html|json|markdown)?\n?', '', insight, flags=re.IGNORECASE)
         insight = re.sub(r'\n?```$', '', insight)
@@ -203,7 +212,7 @@ def get_professional_insight(method_name, stats_data, df_summary, is_comparison=
         insight = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', insight)
         
         return format_tables_in_html(insight)
-        
+
     except Exception as e:
         error_msg = str(e)
         if "API_KEY_INVALID" in error_msg:
