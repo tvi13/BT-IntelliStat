@@ -1,9 +1,9 @@
-📊 BT IntelliStat v1.0
+## 📊 BT IntelliStat v1.0
 Resilient Multi-Dataset Research & AI-Driven Statistical Analysis
 
 BT IntelliStat is an analytical platform built for researchers to synthesize complex datasets through high-fidelity statistical modeling and multi-tier AI reasoning.
 
-🚀 Version 1.0
+## 🚀 Version 1.0
 A robust web service capable of handling real-world data constraints:
 
 Triple-Tier AI Failover (The "Waterfall" Logic): Engineered a resilient inference system that prioritizes Gemini 2.5 Flash, automatically fails over to Gemini 2.5 Flash-Lite, and utilizes Groq (Llama 3.3 70B) as a tertiary high-speed backup.
@@ -14,7 +14,7 @@ Persistent Research History: Configured a Persistent SSD Volume mapping to ensur
 
 Optimized Server Performance: Deployed with a custom Gunicorn configuration using threaded workers timeout to support intensive comparative computations.
 
-✨ Core Features
+## ✨ Core Features
 Comparative Engine: Compare up to 3 datasets with automatic source-file lineage tracking for variance analysis.
 
 Auto-Detect Strategy: Intelligent layer that recommends the optimal statistical path (PCA, Regression, etc.) based on data architecture.
@@ -25,7 +25,7 @@ Professional Export: Server-side document generation into .docx format, complete
 
 Secure Lifecycle: Full Google OAuth 2.0 integration.
 
-📖 How It Works
+## 📖 How It Works
 BT IntelliStat is designed for a streamlined research workflow:
 
 Select Volume: Choose to analyze a single file or perform a comparative synthesis of up to 3 datasets.
@@ -38,7 +38,7 @@ Execute & Synthesize: The engine processes the data through the Python scientifi
 
 Export Results: Download a high-fidelity .docx report containing the executive summary, data tables, and high-resolution visualizations formatted for academic submission.
 
-🛠️ Tech Stack
+## 🛠️ Tech Stack
 Backend: Python 3.10+ / Flask / Gunicorn
 
 AI Ecosystem: Google Gemini 2.5 (Flash & Lite) + Groq (Llama 3.3)
@@ -49,7 +49,7 @@ Visualization: Matplotlib & Seaborn
 
 Infrastructure: Render with Persistent Volume & Custom DNS
 
-📐 Implementation Logic
+## 📐 Implementation Logic
 To maintain academic and technical integrity, the system implements:
 
 Memory Management: Strategic row-sampling for massive files to maintain low-latency response times.
